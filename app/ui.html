@@ -1,0 +1,1038 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JAF Rule Bench</title>
+<style>
+/* Layout: an instrument bench. Fixed control rail on the left (the model's inputs), figures on the right in tabs (its outputs). */
+:root {
+  --bg: #f4f5f8; --panel: #ffffff; --ink: #141821; --ink-2: #4a5160; --muted: #727a89;
+  --rule: #dde1e8; --rule-soft: #eceef2; --accent: #3a2fd6; --accent-soft: #ebe9fd; --rail: #f1f0fa;
+  --s1: #1f6bff; --s2: #ff5a1f; --s3: #00b386; --s4: #ffb000; --s5: #e6007e; --s6: #7a3cff;
+  --on-s1: #ffffff; --on-s2: #ffffff; --on-s3: #062b20; --on-s4: #3a2600; --on-s5: #ffffff; --on-s6: #ffffff;
+  --seq-1: #d4f1ff; --seq-2: #8fd8ff; --seq-3: #3fb0ff; --seq-4: #1f6bff; --seq-5: #3a2fd6; --seq-6: #2a0d8f;
+  --div-neg: #1f6bff; --div-mid: #f2f1ee; --div-pos: #ff2d55;
+  --explain-bg: #fff8e1; --explain-rule: #ffb000;
+  --on-strong: #ffffff; --warn-bg: #fdf3dc; --warn-ink: #7a5300; --bad-bg: #fde6e6; --bad-ink: #8a1f1f; --ok-ink: #1d6b3a;
+  --font-display: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --font-body: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-data: "Cascadia Mono", "Consolas", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12151b; --panel: #1a1e26; --ink: #eef0f4; --ink-2: #b9bfcb; --muted: #8a92a2;
+    --rule: #2d333f; --rule-soft: #242934; --accent: #a99bff; --accent-soft: #2a2550; --rail: #16151f;
+    --s1: #4d8dff; --s2: #ff7a45; --s3: #19d3a2; --s4: #ffc233; --s5: #ff3fa4; --s6: #a07bff;
+    --on-s1: #ffffff; --on-s2: #1c0a00; --on-s3: #062b20; --on-s4: #3a2600; --on-s5: #1c0010; --on-s6: #ffffff;
+    --seq-1: #1d1a5c; --seq-2: #2f2aa8; --seq-3: #2f6cff; --seq-4: #3fb0ff; --seq-5: #8fd8ff; --seq-6: #d4f1ff;
+    --div-neg: #4d8dff; --div-mid: #383835; --div-pos: #ff4d6d;
+    --explain-bg: #2b2412; --explain-rule: #ffc233;
+    --warn-bg: #3a2f14; --warn-ink: #f2cf7a; --bad-bg: #3f1d1d; --bad-ink: #f3b0b0; --ok-ink: #8fd6a8;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 14px; line-height: 1.5; }
+.app { display: grid; grid-template-columns: 320px minmax(0, 1fr); grid-template-rows: auto 1fr; height: 100%; }
+header.bar { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; justify-content: space-between; padding: 10px 20px; border-bottom: 1px solid var(--rule); background: var(--panel); }
+.brand { display: flex; align-items: baseline; gap: 12px; }
+.brand h1 { font-family: var(--font-display); font-size: 1.45rem; margin: 0; font-weight: 600; }
+.brand .ver { font-family: var(--font-data); font-size: 0.75rem; color: var(--muted); }
+.bar .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.status { font-size: 0.82rem; color: var(--ink-2); }
+aside.rail { background: var(--rail); border-right: 1px solid var(--rule); overflow-y: auto; padding: 16px; display: grid; gap: 14px; align-content: start; }
+main { overflow-y: auto; padding: 18px 22px 40px; min-width: 0; }
+h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.35rem; margin: 0; text-wrap: balance; }
+h3 { font-family: var(--font-display); font-weight: 600; font-size: 1.05rem; margin: 0; }
+p { margin: 0; max-width: 74ch; }
+.note { font-size: 0.84rem; color: var(--muted); }
+.eyebrow { font-family: var(--font-data); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; }
+#form { display: grid; gap: 18px; }
+legend { font-family: var(--font-data); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); margin-bottom: 4px; }
+.prm { display: grid; grid-template-columns: 1fr 74px; gap: 2px 8px; align-items: center; }
+.prm label { font-size: 0.82rem; color: var(--ink-2); grid-column: 1 / -1; }
+.prm input[type=range] { width: 100%; accent-color: var(--accent); }
+.prm input[type=number] { width: 74px; font-family: var(--font-data); font-size: 0.82rem; padding: 3px 5px; border: 1px solid var(--rule); border-radius: 4px; background: var(--panel); color: var(--ink); }
+.prm.changed label::after { content: " · changed"; color: var(--accent); }
+button, select { font: inherit; font-size: 0.85rem; }
+button { border: 1px solid var(--rule); background: var(--panel); color: var(--ink); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); color: var(--panel); border-color: var(--accent); font-weight: 600; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+select { border: 1px solid var(--rule); border-radius: 6px; padding: 5px 8px; background: var(--panel); color: var(--ink); }
+.runbox { display: grid; gap: 8px; padding: 12px; background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; }
+.runrow { display: flex; gap: 8px; flex-wrap: wrap; }
+.prog { height: 6px; background: var(--rule-soft); border-radius: 3px; overflow: hidden; }
+.prog i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 300ms; }
+nav.tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--rule); margin-bottom: 18px; }
+nav.tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--ink-2); padding: 8px 12px; }
+nav.tabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.tab { display: grid; gap: 18px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 18px; }
+.card { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: 0; align-content: start; }
+.card-head { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+.card-head .t { display: grid; gap: 3px; }
+.tools { display: flex; gap: 4px; }
+.tools button { padding: 3px 8px; font-size: 0.74rem; font-family: var(--font-data); color: var(--ink-2); }
+.controls { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font-size: 0.84rem; color: var(--ink-2); }
+.findings { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.finding { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; display: grid; gap: 4px; align-content: start; }
+.finding .k { font-family: var(--font-data); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.84rem; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+th { font-size: 0.74rem; color: var(--ink-2); white-space: nowrap; }
+td.num, th.num { text-align: right; font-family: var(--font-data); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.chip { display: inline-block; font-family: var(--font-data); font-size: 0.7rem; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--rule); color: var(--ink-2); white-space: nowrap; }
+.chip.warn { background: var(--warn-bg); color: var(--warn-ink); border-color: transparent; }
+.chip.bad { background: var(--bad-bg); color: var(--bad-ink); border-color: transparent; }
+.chip.accent { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 0.8rem; color: var(--ink-2); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+svg { display: block; width: 100%; height: auto; overflow: visible; }
+svg text { font-family: var(--font-body); font-size: 12px; fill: var(--ink-2); }
+svg .grid { stroke: var(--rule-soft); stroke-width: 1; }
+svg .ax { stroke: var(--rule); stroke-width: 1; }
+svg .tick { font-family: var(--font-data); font-size: 11px; fill: var(--muted); }
+svg .lab { fill: var(--ink); }
+svg .hit { fill: transparent; }
+.tip { position: fixed; pointer-events: none; z-index: 20; background: var(--panel); color: var(--ink); border: 1px solid var(--rule); border-radius: 6px; padding: 7px 10px; font-size: 0.8rem; box-shadow: 0 6px 18px rgba(0,0,0,0.14); max-width: 300px; }
+.banner { padding: 10px 14px; border-radius: 8px; font-size: 0.86rem; }
+.banner.bad { background: var(--bad-bg); color: var(--bad-ink); }
+.banner.warn { background: var(--warn-bg); color: var(--warn-ink); }
+.reg article { border-left: 3px solid var(--accent); padding: 2px 0 2px 12px; display: grid; gap: 3px; }
+.mono { font-family: var(--font-data); font-size: 0.78rem; overflow-wrap: anywhere; }
+.mode { display: inline-flex; border: 1px solid var(--rule); border-radius: 999px; padding: 2px; background: var(--rail); }
+.mode button { border: 0; border-radius: 999px; padding: 4px 12px; background: transparent; color: var(--ink-2); font-size: 0.82rem; }
+.mode button[aria-pressed="true"] { background: var(--accent); color: #fff; font-weight: 600; }
+details.explain { background: var(--explain-bg); border-left: 4px solid var(--explain-rule); border-radius: 6px; padding: 8px 12px; font-size: 0.88rem; }
+details.explain summary { cursor: pointer; font-weight: 600; color: var(--ink); }
+details.explain dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 8px 0 2px; }
+details.explain dt { font-weight: 600; color: var(--ink-2); }
+details.explain dd { margin: 0; max-width: 78ch; }
+details.tech { font-size: 0.82rem; color: var(--muted); }
+details.tech summary { cursor: pointer; }
+.help { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 0.7rem; font-weight: 700; cursor: help; margin-left: 4px; vertical-align: 1px; }
+.sym { font-family: var(--font-data); font-size: 0.72rem; color: var(--muted); margin-left: 4px; }
+.start { background: linear-gradient(135deg, var(--accent-soft), var(--panel)); border: 1px solid var(--rule); border-left: 5px solid var(--accent); border-radius: 8px; padding: 14px 16px; display: grid; gap: 8px; }
+.start ol { margin: 0; padding-left: 20px; display: grid; gap: 4px; max-width: 90ch; }
+.gloss { display: grid; gap: 12px; }
+.gloss article { display: grid; gap: 3px; border-left: 4px solid var(--c, var(--accent)); padding: 2px 0 2px 12px; }
+.gloss .term { font-weight: 700; }
+.gloss .tdef { font-size: 0.82rem; color: var(--muted); }
+.gloss .tdef b { font-family: var(--font-data); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.finding { border-top: 4px solid var(--c, var(--accent)); }
+@media (max-width: 900px) { .app { grid-template-columns: minmax(0, 1fr); height: auto; } aside.rail { border-right: 0; border-bottom: 1px solid var(--rule); } main { overflow: visible; } .grid2 { grid-template-columns: minmax(0, 1fr); } }
+@media (prefers-reduced-motion: reduce) { .prog i { transition: none; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <div class="brand"><h1>JAF Rule Bench</h1><span class="ver" id="ver"></span></div>
+    <div class="actions">
+      <div class="mode" role="group" aria-label="Reading mode"><button id="m-plain" title="Plain-English labels and explanations for readers without quantitative training">Plain English</button><button id="m-tech" title="Technical labels and notation for economists">Technical</button></div>
+      <span class="status" id="status">Loading…</span>
+      <button id="save">Save results to Documents</button>
+      <button id="quit" title="Stops the local engine">Quit</button>
+    </div>
+  </header>
+
+  <aside class="rail" aria-label="Model inputs">
+    <div class="runbox">
+      <div class="eyebrow">Run</div>
+      <div class="prm"><label for="sweep" id="sweep-label">Sensitivity draws (0 to skip; about 30 seconds each)</label><input id="sweep" type="range" min="0" max="60" step="1" value="12"><input id="sweep-n" type="number" min="0" max="200" step="1" value="12"></div>
+      <div class="runrow"><button class="primary" id="run">Run model</button><button id="cancel" disabled>Cancel</button><button id="reset">Defaults</button></div>
+      <div class="prog" aria-hidden="true"><i id="bar"></i></div>
+      <div class="note" id="prog-label">Ready.</div>
+    </div>
+    <form id="form" onsubmit="return false"></form>
+    <p class="note" id="rail-note">Every output is model-implied on a synthetic world. Read rankings and directions rather than levels.</p>
+  </aside>
+
+  <main>
+    <div id="banner"></div>
+    <nav class="tabs" role="tablist" id="tabs"></nav>
+    <div id="views"></div>
+  </main>
+</div>
+<div class="tip" id="tip" hidden></div>
+
+<script>
+"use strict";
+/* ================= state ================= */
+let DATA = null, SPEC = null, DEFAULTS = null;
+const S = { tab: "overview", netRule: "control", netConcept: "a", netThreshold: 0.08, rateMetric: "effective", rankMetric: "effective", obsMetric: "effective",
+            mode: "plain", exMetric: "effective", exConcept: "a", exType: "bar", swX: "beta", swY: "eff_a", swRules: ["intermediary", "control", "owner_residence"] };
+const RULE_ORDER = ["owner_residence", "intermediary", "control", "enclosure", "registration", "validation", "non_assignment"];
+const LEAK = [["migration", "Migration", "--s1"], ["round_trip", "Round-tripping", "--s2"], ["conduit_switching", "Conduit switching", "--s3"],
+              ["foreign_relocation", "Foreign relocation", "--s4"], ["to_gap", "Into the gap", "--s5"], ["exit", "Exit from the asset class", "--s6"]];
+const pct = x => (x * 100).toFixed(1) + "%";
+const f2 = x => Number(x).toFixed(2), f3 = x => Number(x).toFixed(3);
+const $ = id => document.getElementById(id);
+const short = r => DATA.rules[r]?.short || r;
+const R = r => DATA.rules[r];
+const usable = x => x.converged && !x.corner;
+
+/* ================= reading mode and plain-English content ================= */
+function loadMode() { try { const m = localStorage.getItem("jaf-mode"); if (m === "plain" || m === "tech") return m; } catch (e) {} return "plain"; }
+function saveMode(m) { try { localStorage.setItem("jaf-mode", m); } catch (e) {} }
+const PL = () => S.mode === "plain";
+const P = (plain, tech) => (PL() ? plain : tech);
+const CA = () => P("View A", "Concept (a)"), CB = () => P("View B", "Concept (b)");
+const CA_LONG = () => P("View A (states treat holders' reactions as given)", "(a) elasticity-consistent");
+const CB_LONG = () => P("View B (states also foresee how escape routes respond)", "(b) partial anticipation");
+
+const TAB_NAMES = {
+  overview: ["Overview", "Overview"], guide: ["Guide and glossary", "Glossary"], rates: ["Tax each rule sustains", "Rates"],
+  networks: ["Cross-border picture", "Networks"], leakage: ["Where the base goes", "Leakage"], gap: ["Untaxed or double-taxed?", "Gap and overlap"],
+  observation: ["What authorities can see", "Observation"], prop1: ["Why rules differ", "Proposition 1"], sensitivity: ["How robust?", "Sensitivity"],
+  explorer: ["Chart builder", "Chart builder"], register: ["Findings register", "Register"],
+};
+
+const GROUP_NAMES = {
+  "Competition": "How states compete", "Holders": "How holders behave", "Failure modes": "Gaps and double taxation",
+  "Observation": "What tax authorities can see", "Configurations": "How holdings are held", "Numerics": "Technical settings",
+};
+
+/* plain label, plain help (shown on hover in both modes) */
+const PARAM_PLAIN = {
+  theta0: ["How strongly holders react to tax rates", "Higher values mean holdings move away more readily when a state raises its rate. Economists: the baseline semi-elasticity θ₀."],
+  beta: ["How much escape routes add to that reaction", "Holders who can route through other states react more strongly. This sets how much those routes count. 0 switches the cross-border network off. Economists: β, the weight of escape capacity E in θ = θ₀ + βE."],
+  alpha: ["How far indirect routes reach", "How much weight is given to routes that pass through third states (A to B to C). Higher counts longer chains. Economists: α, the per-step discount in the Katz resolvent."],
+  sigma: ["How attached holders are to where they actually operate", "Higher values mean holders prefer to change the legal connecting factor (for example, switch exchange) rather than physically relocate. Economists: σ, the dispersion of location tastes in the mixed logit."],
+  mobility_scale: ["How easily holders can switch the connecting factor", "Scales how easy it is to move a holding's legal hook (registration, infrastructure, chain) to another state. 1 is the default world."],
+  exit_weight: ["Appeal of leaving digital assets altogether", "How attractive the outside option (holding no digital assets) is. Higher means more holders leave when taxes rise."],
+  home_bias: ["Share of transactions that stay at home", "How much trading happens with counterparties in the same state. Affects how much cross-border traffic each rule creates."],
+  rho: ["Treaty relief for double taxation", "When two states both claim the same holding, how much of the double tax is relieved. 0 means no relief; 1 means full relief, as with a full foreign tax credit under a tax treaty."],
+  phi: ["Residence top-up on untaxed holdings", "When no rule gives any state the right to tax a holding, the holder's residence state may tax it at this fraction of its own rate (similar in spirit to a subject-to-tax or switch-over rule). 0 means the holding stays untaxed."],
+  dual_residence: ["Share of holders resident in two states", "Holders with two residences can attract two residence claims."],
+  obs_custodial: ["Visibility of exchange-held assets", "Share of holdings kept with exchanges or custodians that tax authorities can actually see (for example, through reporting rules such as CARF)."],
+  obs_self: ["Visibility of self-held assets", "Share of holdings kept in the holder's own wallet that tax authorities can see."],
+  enforcement_self: ["Visibility of self-held assets after stronger enforcement", "Used for the 'What authorities can see' comparison: the same world with this higher visibility."],
+  w_custodial: ["Share held through exchanges or custodians", "Relative weight of holdings kept with an intermediary."],
+  w_single: ["Share self-held with a single key", "Relative weight of holdings in the holder's own wallet, controlled by one key."],
+  w_multisig: ["Share held in multi-signature wallets", "Relative weight of holdings that need several keys, possibly held in different states."],
+  kappa_relief: ["Technical: smoothing of the relief calculation", "Leave at the default unless you are checking numerical robustness. Economists: κ for the softplus approximation to max(0, τₛ − τₚ)."],
+  draws: ["Technical: number of simulated holder types", "More types give smoother results but slower runs."],
+  seed: ["Which synthetic world", "Changes the randomly generated world (sizes of states, where holders sit). Use it to check that a result is not peculiar to one world."],
+};
+
+/* per-card explanations. what / read / means are plain English; title is the plain-mode title. */
+const EX = {
+  "c-table": { title: "The seven rules at a glance",
+    what: "For each candidate rule for deciding which state may tax a digital-asset holding, the table shows the tax it sustains and how often it fails (leaves holdings untaxed, taxes them twice, or cannot see them).",
+    read: "Effective rate: of every 100 units of holdings a rule lets a state tax, how many units of tax are collected. Yield: of every 100 units of holdings still in digital assets, how much tax anyone collects, counting holdings nobody may tax. Gap: holdings no state may tax. Overlap: holdings two states claim. Unobserved: holdings a state may tax but cannot see. Exit: holders who leave digital assets.",
+    means: "This is the paper's comparison of assignment rules in numbers. A rule with a high effective rate but a low yield taxes well what it reaches but leaves much unreached." },
+  "c-rates": { title: "How much tax each rule can sustain",
+    what: "The tax rate that competing states settle on under each rule, once no state wants to change its rate.",
+    read: "Longer bars mean more tax is sustained. Each rule has two bars, one for each view of how states behave (see the Guide). Use the menu to switch between the effective rate and the yield. Do not compare headline (nominal) rates across rules: a state that cannot see much of its base can announce a high rate that collects little.",
+    means: "The paper argues that the choice of assignment rule shapes how far states can tax before holdings move. If the two views disagree about which rule is higher, the tool treats the two rules as tied." },
+  "c-rank": { title: "Which rule beats which?",
+    what: "Each cell compares the rule in the row with the rule in the column.",
+    read: "▲ means the row rule sustains more tax, ▼ less, = the two views of state behaviour disagree (treat as a tie). Hover over a cell to see how often the verdict survived the robustness checks.",
+    means: "Only verdicts that hold under both views are reported, so the comparison does not depend on a contested assumption about how far states look ahead." },
+  "c-net-effect": { title: "Does the cross-border network matter?",
+    what: "The tax each rule sustains with cross-border escape routes switched off, against the tax with them switched on.",
+    read: "If the 'switched on' bar is much shorter, the ability to route holdings through other states is what holds rates down under that rule.",
+    means: "Tests the paper's claim that the network of cross-border flows an assignment rule creates drives its consequences. In this model the network matters mostly when states look ahead (View B)." },
+  "c-net": { title: "The cross-border picture each rule creates",
+    what: "Six model states (J1 to J6). An arrow is drawn when a rule splits a transfer between two different states, so the transfer becomes cross-border for tax purposes.",
+    read: "Each state has its own colour. Circle size: the share of holdings that state may tax. Circle fill: its tax rate (see the colour key beside the chart). Arrow thickness: how much flows between the two states. Use the slider to hide small flows.",
+    means: "The same economic activity produces a different cross-border picture depending on which connecting factor the rule uses. That picture determines where holdings can escape to." },
+  "c-leak": { title: "Where holdings go when a state raises its tax",
+    what: "Each state in turn raises its rate a little. The bar shows where the holdings it loses end up.",
+    read: "Migration: holders move to another state. Round-tripping: residents route their own holdings out through a foreign service and keep the benefit at home. Conduit switching: foreign holders who used this state as a channel pick another channel. Foreign relocation: foreign activity hosted here moves elsewhere. Into the gap: holdings move to a form no rule assigns. Exit: holders leave digital assets altogether.",
+    means: "The paper predicts that rules based on easily moved connecting factors leak through restructuring rather than genuine relocation. The bars let you check that prediction rule by rule." },
+  "c-gap": { title: "Is it worse to leave holdings untaxed or to tax them twice?",
+    what: "Two rules that are identical except for one type of holding: a self-held key located abroad. Rule X leaves it untaxed (a gap); rule Y lets two states tax it (an overlap).",
+    read: "Each square is one combination of treaty relief (left to right) and residence top-up (bottom to top). Red: the gap costs more than the double taxation. Blue: the double taxation costs more. Stronger colour means a bigger difference.",
+    means: "This tests the paper's Proposition 3, that a gap is generally the costlier failure. In this model it is, except where the residence top-up is strong and treaty relief weak." },
+  "c-obs": { title: "What happens if authorities can see more?",
+    what: "Each rule with today's visibility of self-held assets, and with improved visibility.",
+    read: "Compare the two bars for each rule. Hover to see how much of the base was invisible before and after.",
+    means: "Relevant to the paper's discussion of enforcement and reporting regimes. Better visibility tends to lower headline rates but raise the tax actually collected, because the same rate now reaches more of the base." },
+  "c-p1": { title: "Do rules that create similar networks have similar consequences?",
+    what: "Every pair of rules, placed by how different their cross-border networks are (left to right) and how different the tax they sustain is (bottom to top).",
+    read: "Dots far up but far left are pairs with almost the same network yet different results. Those are shown in orange and marked ‘third channel’ in the table.",
+    means: "The paper's Proposition 1 says consequences follow from the network and the distribution of holdings. The tool finds a third factor: who bears the gaps and overlaps." },
+  "c-sw": { title: "Do the comparisons survive changes in assumptions?",
+    what: "The model was rerun many times with different assumptions (how responsive holders are, how strong treaty relief is, and so on). This counts how often each comparison came out the same way.",
+    read: "A long first bar means the comparison is robust. A visible second bar means it sometimes reverses.",
+    means: "Only comparisons that survive most reruns should be treated as properties of the rules rather than of one particular set of assumptions." },
+  "c-ex1": { title: "Compare the rules on any measure",
+    what: "A bar chart you build yourself: pick any measure and either view of state behaviour.",
+    read: "Choose from the menus. Every chart can be downloaded as a picture (PNG or SVG) or as data (CSV) for use in a paper or slides.",
+    means: "Use this to produce figures for writing without needing the other tabs." },
+  "c-ex2": { title: "How does a result change with an assumption?",
+    what: "Each dot is one robustness rerun for one rule. Across the bottom is the assumption you choose; up the side is the result you choose.",
+    read: "A rising cloud of dots means the result grows with that assumption. A flat cloud means the assumption hardly matters. Pick up to three rules to compare.",
+    means: "Shows which assumptions drive which results, so you can say how sensitive a conclusion is." },
+  "c-reg1": { title: "What the model shows, stated in words",
+    what: "Plain statements of results that held in at least 90% of the robustness reruns.",
+    read: "Each statement is followed by how often it held.",
+    means: "These are properties of the model, not facts about the world. They are the claims the paper could make on the strength of the model." },
+  "c-reg2": { title: "Claims that real data could test (drafts)",
+    what: "Statements phrased so that data on real jurisdictions could confirm or contradict them.",
+    read: "Each lists the kind of data that would be needed. They are drafts and should be fixed in advance before anyone looks at the data.",
+    means: "This is the bridge from the theory to empirical work." },
+  "c-reg3": { title: "Settings used for this run",
+    what: "Every setting the model used, for the record.",
+    read: "Download the CSV to cite the exact settings alongside a figure.",
+    means: "Lets a reader reproduce the run." },
+};
+
+/* glossary: [term, plain, technical, colour token] */
+const GLOSS = [
+  ["The seven candidate rules", [
+    ["Owner-residence", "The state where the holder lives may tax the holding, wherever the asset or service sits. Comparable to residence-based taxation of individuals.", "Predicate: holder residence (personal). Dual residents attract a second claim (overlap).", "--s1"],
+    ["Intermediary location", "The state where the exchange or custodian holding the asset is located may tax it. Assets the holder keeps in their own wallet are not reached.", "Predicate: intermediary seat (institutional). Self-hosted holdings fall into the gap unless a residence backstop applies.", "--s2"],
+    ["Control", "The state where the person who controls the private key is located may tax. Where several people in different states must sign together, more than one state may claim.", "Predicate: key control (movable). Multi-signature with controllers in p ≠ j creates overlap.", "--s3"],
+    ["Infrastructural enclosure", "The state where the technical infrastructure hosting the holding sits (for example, the wallet service or servers) may tax.", "Predicate: infrastructure location (movable), chosen by the holder.", "--s4"],
+    ["Registration", "The state where the holding or its service provider is registered may tax.", "Predicate: registration (institutional), chosen by the holder.", "--s5"],
+    ["Place of validation", "The state associated with the blockchain on which transactions are validated may tax. Holders choose which chain to use.", "Predicate: validation (elective, chain choice).", "--s6"],
+    ["Universal non-assignment", "No rule gives any state the right to tax. Only a residence top-up, if any, applies. Included as a benchmark.", "Every option is in the gap. A corner case: there is no rate for the rule to sustain.", "--muted"],
+  ]],
+  ["Key measures", [
+    ["Effective rate", "Of every 100 units of holdings a rule lets a state tax, how many units of tax are actually collected. The fairest way to compare what a rule can sustain.", "Rule revenue ÷ assigned base. Excludes the residence backstop collected on gap base.", "--accent"],
+    ["Yield", "Of every 100 units of holdings still in digital assets, how much tax anyone collects. Unlike the effective rate, it counts holdings nobody may tax, so it penalises rules that leave holdings untaxed.", "Total revenue ÷ base remaining in the asset class (gap included).", "--accent"],
+    ["Headline (nominal) rate", "The rate a state announces. Not comparable across rules, because a state that cannot see much of its base may announce a high rate that collects little.", "Equilibrium τ.", "--accent"],
+    ["Gap", "Holdings no state has the right to tax under the rule (under-assignment).", "Share of base whose claim set is empty.", "--accent"],
+    ["Overlap", "Holdings that two states claim, creating a risk of double taxation (over-assignment).", "Share of base with two claimants; relieved at rate ρ.", "--accent"],
+    ["Unobserved", "Holdings a state has the right to tax but cannot see, so it collects nothing on them.", "Assigned base × (1 − observability).", "--accent"],
+  ]],
+  ["How states are assumed to behave", [
+    ["Settling point (equilibrium)", "The set of tax rates at which no state can collect more by changing its own rate, given what the others do. The tool reports results at this point.", "Nash equilibrium in rates, found by damped best response.", "--accent"],
+    ["View A", "Each state sets its rate taking as given how readily holders respond.", "Concept (a), elasticity-consistent: θ held fixed in each best response.", "--accent"],
+    ["View B", "Each state also foresees that raising its own rate changes how easily holders can route around it (other states' arrangements held fixed).", "Concept (b), partial anticipation: own escape capacity E_i responds to τ_i; network held fixed.", "--accent"],
+    ["Tie", "If the two views disagree about which of two rules sustains more tax, the tool does not rank them.", "Ranking declared only where sign(Δa) = sign(Δb).", "--accent"],
+    ["Did not settle", "Sometimes rates keep moving and never settle. Those cases are reported and left out of comparisons.", "Non-convergence of best responses.", "--accent"],
+  ]],
+  ["What happens to the base when a state raises its tax", [
+    ["Migration", "Holders move their activity to another state.", "Own base moving to another location.", "--s1"],
+    ["Round-tripping", "Residents route their own holdings out through a foreign service so that another state's rule applies, while the economic activity stays at home.", "Own activity reassigned abroad via a predicate change.", "--s2"],
+    ["Conduit switching", "Foreign holders who used this state only as a channel switch to a channel in another state.", "Foreign activity hosted here moving its predicate to a third host.", "--s3"],
+    ["Foreign relocation", "Foreign activity hosted here relocates to another state.", "Foreign activity relocating.", "--s4"],
+    ["Into the gap", "Holdings move into a form no rule assigns, so nobody may tax them.", "Transition to an option with an empty claim set.", "--s5"],
+    ["Exit", "Holders leave digital assets altogether.", "Transition to the outside option.", "--s6"],
+  ]],
+  ["Reading the results responsibly", [
+    ["Synthetic world", "The six states and their holders are invented, so that the rules can be compared under controlled conditions. Read results as directions and rankings, not as forecasts for any real country.", "Randomly generated world; seed adjustable.", "--accent"],
+    ["Robustness reruns (the sweep)", "The model is rerun with different assumptions drawn at random. A result that survives most reruns is a property of the rules; one that does not is a property of particular assumptions.", "Stratified sweep over β, θ₀, ρ, φ, σ, κ_relief, mobility and seed.", "--accent"],
+    ["Model output versus testable claim", "A model output says what happens inside the model. A testable claim says what data on real jurisdictions should show if the theory is right. The Findings register keeps them apart.", "Register: fingerprinted model outputs and draft observable hypotheses.", "--accent"],
+  ]],
+];
+
+function guide(box) {
+  const intro = document.createElement("div"); intro.className = "start";
+  intro.innerHTML = `<h3>${P("What this tool does", "Scope")}</h3><p>${P(
+    "The paper asks how the rule for deciding which state may tax a digital-asset holding (the assignment rule) affects how much tax can be collected, and how often holdings end up untaxed or taxed twice. This tool builds a small invented world of six states and many holders, applies each candidate rule in turn, lets the states compete on tax rates, and reports what happens. Every term used in the tool is defined below, first in plain English and then in technical terms.",
+    "A six-jurisdiction synthetic world; mixed-logit holders over (predicate, location) options; jurisdictions compete in rates; θ augmented by Katz-resolvent escape capacity. Each entry gives the plain definition and the technical one.")}</p>`;
+  box.appendChild(intro);
+  for (const [head, items] of GLOSS) {
+    const c = card(box, "g-" + slug(head), head, ""); c.root.querySelector(".tools").hidden = true;
+    c.host.innerHTML = `<div class="gloss">${items.map(([t, pl, te, col]) => `<article style="--c:var(${col})"><div class="term">${t}</div><div>${pl}</div><div class="tdef"><b>Technical</b> ${te}</div></article>`).join("")}</div>`;
+  }
+}
+
+S.mode = loadMode();
+
+/* ================= svg + tooltip helpers ================= */
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs = {}, parent) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; }
+function svgRoot(host, w, h, label) { host.innerHTML = ""; const s = el("svg", { viewBox: `0 0 ${w} ${h}`, role: "img", "aria-label": label, xmlns: NS }); host.appendChild(s); return s; }
+function txt(p, x, y, s, a = {}) { const t = el("text", { x, y, ...a }, p); t.textContent = s; return t; }
+const tip = $("tip");
+function showTip(ev, html) { tip.innerHTML = html; tip.hidden = false; const pad = 14; let x = ev.clientX + pad, y = ev.clientY + pad; const r = tip.getBoundingClientRect(); if (x + r.width > innerWidth - 8) x = ev.clientX - r.width - pad; if (y + r.height > innerHeight - 8) y = ev.clientY - r.height - pad; tip.style.left = x + "px"; tip.style.top = y + "px"; }
+function hover(node, html) { node.addEventListener("mousemove", e => showTip(e, typeof html === "function" ? html() : html)); node.addEventListener("mouseleave", () => tip.hidden = true); }
+function niceMax(v) { if (v <= 0) return 1; const p = Math.pow(10, Math.floor(Math.log10(v))); for (const m of [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]) if (m * p >= v) return m * p; return 10 * p; }
+
+/* ================= cards with export tools ================= */
+const CARD_DATA = {};
+function card(parent, id, title, note) {
+  const c = document.createElement("section"); c.className = "card"; c.id = id;
+  const ex = EX[id]; if (PL() && ex?.title) title = ex.title;
+  const exHtml = ex ? `<details class="explain" ${PL() ? "open" : ""}><summary>${PL() ? "What this chart tells you" : "Plain-English guide"}</summary><dl><dt>What it shows</dt><dd>${ex.what}</dd><dt>How to read it</dt><dd>${ex.read}</dd><dt>Why it matters</dt><dd>${ex.means}</dd></dl></details>` : "";
+  const noteHtml = !note ? "" : (PL() && ex ? `<details class="tech"><summary>Technical description</summary><p>${note}</p></details>` : `<p class="note">${note}</p>`);
+  c.innerHTML = `<div class="card-head"><div class="t"><h3>${title}</h3>${noteHtml}</div><div class="tools"><button data-x="png" title="Download the chart as a PNG image">PNG</button><button data-x="svg" title="Download the chart as an SVG file">SVG</button><button data-x="csv" title="Download the chart's data as CSV">CSV</button></div></div>${exHtml}<div class="ctl controls"></div><div class="host"></div><div class="foot"></div>`;
+  parent.appendChild(c);
+  c.querySelector(".tools").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; exportCard(id, b.dataset.x, title); });
+  return { root: c, host: c.querySelector(".host"), ctl: c.querySelector(".ctl"), foot: c.querySelector(".foot") };
+}
+function setData(id, rows) { CARD_DATA[id] = rows; }
+function download(name, blob) { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500); }
+function slug(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, ""); }
+function inlineSvg(svg) {
+  const clone = svg.cloneNode(true);
+  const src = svg.querySelectorAll("*"), dst = clone.querySelectorAll("*");
+  const props = ["fill", "stroke", "stroke-width", "stroke-opacity", "fill-opacity", "opacity", "font-family", "font-size", "font-weight", "text-anchor"];
+  src.forEach((n, i) => { const cs = getComputedStyle(n); props.forEach(p => { const v = cs.getPropertyValue(p); if (v) dst[i].setAttribute(p, v); }); dst[i].removeAttribute("class"); dst[i].removeAttribute("style"); });
+  const vb = svg.viewBox.baseVal; clone.setAttribute("width", vb.width); clone.setAttribute("height", vb.height);
+  const bg = el("rect", { x: vb.x - 10, y: vb.y - 10, width: vb.width + 20, height: vb.height + 20, fill: getComputedStyle(document.body).getPropertyValue("--panel").trim() || "#fff" });
+  clone.insertBefore(bg, clone.firstChild);
+  return new XMLSerializer().serializeToString(clone);
+}
+function exportCard(id, kind, title) {
+  const name = slug(title);
+  if (kind === "csv") {
+    const rows = CARD_DATA[id]; if (!rows) return;
+    const csv = rows.map(r => r.map(v => { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }).join(",")).join("\n");
+    return download(name + ".csv", new Blob([csv], { type: "text/csv" }));
+  }
+  const svg = $(id).querySelector(".host svg"); if (!svg) return;
+  const str = inlineSvg(svg);
+  if (kind === "svg") return download(name + ".svg", new Blob([str], { type: "image/svg+xml" }));
+  const vb = svg.viewBox.baseVal, img = new Image(), scale = 2;
+  img.onload = () => { const cv = document.createElement("canvas"); cv.width = (vb.width + 20) * scale; cv.height = (vb.height + 20) * scale; const g = cv.getContext("2d"); g.scale(scale, scale); g.translate(10, 10); g.drawImage(img, 0, 0); cv.toBlob(b => download(name + ".png", b)); };
+  img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(str);
+}
+
+/* ================= chart primitives ================= */
+function hBars(host, { cats, series, fmt = f3, xLabel = "", max = null, note = null, labelW = 150 }) {
+  const rowH = 14 * series.length + 14, W = 720, m = { l: labelW, r: 56, t: 8, b: 34 }, H = m.t + m.b + rowH * cats.length;
+  const s = svgRoot(host, W, H, xLabel);
+  const vals = series.flatMap(sr => sr.values.filter(v => v != null && isFinite(v)));
+  const vmax = max ?? niceMax(Math.max(1e-9, ...vals)); const X = v => m.l + Math.max(0, v) / vmax * (W - m.l - m.r);
+  for (let i = 0; i <= 4; i++) { const v = vmax * i / 4; el("line", { x1: X(v), x2: X(v), y1: m.t, y2: H - m.b, class: "grid" }, s); txt(s, X(v), H - m.b + 16, fmt(v), { class: "tick", "text-anchor": "middle" }); }
+  txt(s, (W + m.l) / 2, H - 4, xLabel, { "text-anchor": "middle" });
+  cats.forEach((c, i) => {
+    const y0 = m.t + rowH * i + 7; txt(s, m.l - 10, y0 + 7 * series.length + 4, c.label, { class: "lab", "text-anchor": "end" });
+    series.forEach((sr, k) => {
+      const v = sr.values[i], y = y0 + 14 * k;
+      if (v == null || !isFinite(v)) { txt(s, m.l + 4, y + 10, sr.missing?.[i] || "n/a", { class: "tick" }); return; }
+      el("rect", { x: m.l, y, width: Math.max(1, X(v) - m.l), height: 11, rx: 2, fill: `var(${sr.color})` }, s);
+      txt(s, X(v) + 5, y + 10, fmt(v), { class: "tick" });
+    });
+    const hit = el("rect", { x: m.l, y: y0 - 4, width: W - m.l - m.r, height: rowH, class: "hit" }, s);
+    hover(hit, `<b>${c.label}</b><br>` + series.map((sr, k) => `${sr.name}: ${sr.values[i] == null ? (sr.missing?.[i] || "n/a") : fmt(sr.values[i])}`).join("<br>") + (c.extra ? `<br>${c.extra}` : ""));
+  });
+}
+function legend(host, items) { const d = document.createElement("div"); d.className = "legend"; d.innerHTML = items.map(([n, c]) => `<span><i style="background:var(${c})"></i>${n}</span>`).join(""); host.prepend(d); }
+function stacked(host, { cats, parts, rows, xLabel }) {
+  const W = 720, rowH = 34, m = { l: 150, r: 16, t: 8, b: 34 }, H = m.t + m.b + rowH * cats.length;
+  const s = svgRoot(host, W, H, xLabel); const X = v => m.l + v * (W - m.l - m.r);
+  for (let i = 0; i <= 4; i++) { const v = i / 4; el("line", { x1: X(v), x2: X(v), y1: m.t, y2: H - m.b, class: "grid" }, s); txt(s, X(v), H - m.b + 16, (v * 100) + "%", { class: "tick", "text-anchor": "middle" }); }
+  txt(s, (W + m.l) / 2, H - 4, xLabel, { "text-anchor": "middle" });
+  cats.forEach((c, i) => {
+    const y = m.t + rowH * i + 6; let acc = 0; txt(s, m.l - 10, y + 15, c.label, { class: "lab", "text-anchor": "end" });
+    if (!rows[i]) { txt(s, m.l + 4, y + 15, c.missing || "n/a", { class: "tick" }); return; }
+    for (const [k, , col] of parts) {
+      const v = Math.max(0, rows[i][k] || 0); if (v < 1e-4) continue;
+      const x = X(acc), w = Math.max(0, X(acc + v) - X(acc) - 2);
+      el("rect", { x, y, width: w, height: 22, rx: 3, fill: `var(${col})` }, s);
+      if (w > 30) txt(s, x + w / 2, y + 15, (v * 100).toFixed(0) + "%", { "text-anchor": "middle", style: `fill:var(--on-${col.slice(2)});font-size:11px;font-weight:600;font-family:var(--font-data)` });
+      acc += v;
+    }
+    const hit = el("rect", { x: m.l, y: y - 4, width: W - m.l - m.r, height: rowH, class: "hit" }, s);
+    hover(hit, `<b>${c.label}</b><br>` + parts.map(([k, n]) => `${n}: ${pct(rows[i][k] || 0)}${rows[i][k + "_min"] != null ? ` <span style="color:var(--muted)">(${pct(rows[i][k + "_min"])} to ${pct(rows[i][k + "_max"])})</span>` : ""}`).join("<br>"));
+  });
+}
+function scatter(host, { pts, xLabel, yLabel, groups }) {
+  const W = 720, H = 360, m = { l: 56, r: 16, t: 12, b: 42 };
+  const s = svgRoot(host, W, H, `${yLabel} against ${xLabel}`);
+  const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+  let x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(0, ...ys), y1 = niceMax(Math.max(...ys));
+  if (x0 === x1) { x0 -= 0.5; x1 += 0.5; } const padx = (x1 - x0) * 0.05; x0 -= padx; x1 += padx;
+  const X = v => m.l + (v - x0) / (x1 - x0) * (W - m.l - m.r), Y = v => H - m.b - (v - y0) / (y1 - y0) * (H - m.t - m.b);
+  for (let i = 0; i <= 4; i++) { const v = y0 + (y1 - y0) * i / 4; el("line", { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), class: "grid" }, s); txt(s, m.l - 6, Y(v) + 4, f2(v), { class: "tick", "text-anchor": "end" }); }
+  for (let i = 0; i <= 5; i++) { const v = x0 + (x1 - x0) * i / 5; txt(s, X(v), H - m.b + 16, Math.abs(v) >= 10 ? v.toFixed(0) : f2(v), { class: "tick", "text-anchor": "middle" }); }
+  txt(s, (W + m.l) / 2, H - 6, xLabel, { "text-anchor": "middle" });
+  txt(s, 12, (H - m.b) / 2, yLabel, { "text-anchor": "middle", transform: `rotate(-90 12 ${(H - m.b) / 2})` });
+  for (const p of pts) { const c = el("circle", { cx: X(p.x), cy: Y(p.y), r: 4.5, fill: `var(${groups[p.g]})`, stroke: "var(--panel)", "stroke-width": 1.5 }, s); hover(c, p.tip); }
+}
+function seqColor(v, lo, hi) { const st = ["--seq-1", "--seq-2", "--seq-3", "--seq-4", "--seq-5", "--seq-6"]; const k = Math.max(0, Math.min(5, Math.round(((v - lo) / Math.max(1e-9, hi - lo)) * 5))); return `var(${st[k]})`; }
+
+/* ================= views ================= */
+const TABS = ["overview", "world", "rates", "networks", "leakage", "gap", "observation", "prop1", "sensitivity", "explorer", "register", "guide"];
+function buildTabs() {
+  const nav = $("tabs"); nav.innerHTML = "";
+  for (const k of TABS) { const b = document.createElement("button"); b.role = "tab"; b.textContent = TAB_NAMES[k][PL() ? 0 : 1]; b.setAttribute("aria-selected", k === S.tab); b.onclick = () => { S.tab = k; buildTabs(); render(); }; nav.appendChild(b); }
+}
+function render() {
+  const v = $("views"); v.innerHTML = ""; if (!["guide", "world"].includes(S.tab) && (!DATA || !DATA.rules)) { v.innerHTML = `<p class="note">No results yet. Choose parameters and run the model.</p>`; return; }
+  const box = document.createElement("div"); box.className = "tab"; v.appendChild(box);
+  ({ overview, world: worldTab, rates, networks, leakage, gap, observation, prop1, sensitivity, explorer, register, guide })[S.tab](box);
+}
+const ruleList = () => RULE_ORDER.filter(r => DATA.rules[r]);
+
+const RANK_M = { effective: "effective rate on assigned base", yield: "yield per unit of class base" };
+function RK() { return S.rankMetric === "yield" && DATA.ranking_yield ? DATA.ranking_yield : DATA.ranking; }
+function RKd(d) { return S.rankMetric === "yield" && d.ranking_yield ? d.ranking_yield : d.ranking; }
+function rankSwitch(id) { return `<label>Rank on <select id="${id}"><option value="effective" ${S.rankMetric !== "yield" ? "selected" : ""}>Effective rate on assigned base</option><option value="yield" ${S.rankMetric === "yield" ? "selected" : ""}>Yield per unit of class base</option></select></label>`; }
+function bindRankSwitch(id) { $(id).onchange = e => { S.rankMetric = e.target.value; render(); }; }
+
+function overview(box) {
+  const rl = ruleList(), use = rl.filter(r => usable(R(r).a) && usable(R(r).b));
+  const hiA = use.slice().sort((x, y) => R(y).a.effective - R(x).a.effective)[0], hiB = use.slice().sort((x, y) => R(y).b.effective - R(x).b.effective)[0];
+  const loA = use.slice().sort((x, y) => R(x).a.effective - R(y).a.effective)[0], loB = use.slice().sort((x, y) => R(x).b.effective - R(y).b.effective)[0];
+  const yA = use.slice().sort((x, y) => R(y).a.revenue_per_base - R(x).a.revenue_per_base)[0], yB = use.slice().sort((x, y) => R(y).b.revenue_per_base - R(x).b.revenue_per_base)[0];
+  const ne = use.map(r => { const n = DATA.network_effect[r]; return [r, n.b - n.b0, n.a - n.a0]; });
+  const neB = ne.reduce((s, x) => s + x[1], 0) / Math.max(1, ne.length), neA = ne.reduce((s, x) => s + x[2], 0) / Math.max(1, ne.length);
+  const g = DATA.prop3.grid, phis = [...new Set(g.map(c => c.phi))].sort((a, b) => a - b), okp = phis.filter(p => g.filter(c => c.phi === p).every(c => c.gap_worse));
+  const leak = rl.filter(r => R(r).leakage.valid).map(r => [r, R(r).leakage]);
+  const gapLeak = leak.slice().sort((x, y) => y[1].to_gap - x[1].to_gap)[0];
+  const notConv = rl.filter(r => !(R(r).a.converged && R(r).b.converged));
+  const tie = (x, y) => x !== y;
+  const items = PL() ? [
+    ["Most tax on what it reaches", tie(hiA, hiB) ? `${short(hiA)} and ${short(hiB)} are effectively tied: each comes first under one of the two views of state behaviour.` : `${short(hiA)}: about ${pct(R(hiA).a.effective)} (View A) or ${pct(R(hiA).b.effective)} (View B) of what it lets states tax is collected.`, "--s1"],
+    ["Most tax overall", tie(yA, yB) ? `${short(yA)} under View A, ${short(yB)} under View B. Treat as a tie.` : `${short(yA)} raises the most tax per unit of all holdings, including holdings nobody may tax. Rules that leave holdings untaxed drop down this ranking.`, "--s3"],
+    ["Least tax on what it reaches", tie(loA, loB) ? `${short(loA)} under View A, ${short(loB)} under View B.` : `${short(loA)}, under both views.`, "--s2"],
+    ["Biggest untaxed share", gapLeak ? `Under ${short(gapLeak[0]).toLowerCase()}, ${pct(gapLeak[1].to_gap)} of the holdings a state loses after a tax rise move into a form no state may tax.` : "n/a", "--s5"],
+    ["Untaxed versus taxed twice", okp.length ? `Leaving holdings untaxed costs more than taxing them twice, whatever the treaty relief, as long as the residence top-up is ${Math.round(Math.max(...okp) * 100)}% of the residence rate or less.` : "Neither failure is consistently worse.", "--s4"],
+    ["Cross-border escape routes", `Switching escape routes on changes the tax sustained by ${(neA * 100).toFixed(1)} points under View A and ${(neB * 100).toFixed(1)} points under View B (a minus sign means less tax). They matter most where the bigger number is.`, "--s6"],
+    ["Did the model work?", notConv.length ? `<span class="chip bad">rates did not settle</span> ${notConv.map(short).join(", ")}. Those results are left out of comparisons.` : "Yes. Rates settled for every rule. (Universal non-assignment has no rate to settle, by design.)", "--muted"],
+  ] : [
+    ["Highest effective rate", hiA === hiB ? `${short(hiA)} under both concepts (${pct(R(hiA).a.effective)} and ${pct(R(hiA).b.effective)}).` : `${short(hiA)} under (a); ${short(hiB)} under (b). Treat as a tie.`, "--s1"],
+    ["Highest yield per unit of class base", yA === yB ? `${short(yA)} under both concepts (${pct(R(yA).a.revenue_per_base)} and ${pct(R(yA).b.revenue_per_base)}). Rules that leave base in the gap fall here.` : `${short(yA)} under (a); ${short(yB)} under (b). Treat as a tie.`, "--s3"],
+    ["Lowest effective rate", loA === loB ? `${short(loA)} under both concepts.` : `${short(loA)} under (a); ${short(loB)} under (b). Treat as a tie.`, "--s2"],
+    ["Leakage into the gap", gapLeak ? `Under ${short(gapLeak[0]).toLowerCase()}, ${pct(gapLeak[1].to_gap)} of base leaving a taxing jurisdiction moves into the gap.` : "n/a", "--s5"],
+    ["Proposition 3 (matched pair)", okp.length ? `The gap is the costlier failure at every level of treaty relief while φ ≤ ${Math.max(...okp)}.` : `The gap is not uniformly costlier at any tested φ.`, "--s4"],
+    ["Network channel", `Switching β on changes effective rates by ${(neA * 100).toFixed(1)} points on average under (a) and ${(neB * 100).toFixed(1)} under (b). The network bites through anticipation.`, "--s6"],
+    ["Run status", notConv.length ? `<span class="chip bad">not converged</span> ${notConv.map(short).join(", ")}` : `All rules converged. Non-assignment has no rate to sustain.`, "--muted"],
+  ];
+  if (PL()) {
+    const st = document.createElement("div"); st.className = "start";
+    st.innerHTML = `<h3>Start here</h3><p>This tool compares candidate rules for deciding which state may tax a digital-asset holding, in an invented world of six competing states. It is a thinking aid for the paper, not a forecast for any real country.</p>
+      <ol><li>Read the findings below, then open any tab. Each chart begins with a yellow box explaining what it shows, how to read it, and why it matters.</li>
+      <li>To model real countries, open <b>Real-world sample</b>: download the coding template, fill in the law for each jurisdiction, and upload it. An invented example shows how it works.</li>
+      <li>Unfamiliar term? The <b>Guide and glossary</b> tab defines every term in plain English and in technical terms.</li>
+      <li>To test an assumption, change a setting on the left (hover over <span class="help">?</span> for an explanation) and press <b>Run model</b>.</li>
+      <li>Every chart downloads as a picture (PNG or SVG) or as data (CSV) for papers and slides. Switch to <b>Technical</b> at the top for the notation economists use.</li></ol>`;
+    box.appendChild(st);
+  }
+  const f = document.createElement("div"); f.className = "findings"; f.innerHTML = items.map(([k, v, col]) => `<div class="finding" style="--c:var(${col})"><div class="k">${k}</div><div>${v}</div></div>`).join(""); box.appendChild(f);
+  const c = card(box, "c-table", "Rules at a glance", "Equilibrium values. Effective rate: revenue the rule raises per unit of base it assigns (residence backstop on gap base excluded). Yield: all revenue, backstop included, per unit of base remaining in the asset class (gap included). Gap: base no rule assigns. Overlap: base claimed twice. Unobserved: assigned base the claimant cannot see.");
+  const rows = [PL() ? ["Rule", "Connecting factor", "Effective, View A", "Effective, View B", "Yield, View A", "Yield, View B", "Headline rate, A", "Revenue, A", "Untaxed (gap)", "Taxed twice", "Unseen", "Left digital assets"]
+    : ["Rule", "Predicate", "Effective (a)", "Effective (b)", "Yield (a)", "Yield (b)", "Nominal (a)", "Revenue (a)", "Gap", "Overlap", "Unobserved", "Exit"]];
+  let h = `<div class="scroll"><table><thead><tr>${rows[0].map((x, i) => `<th class="${i > 1 ? "num" : ""}">${x}</th>`).join("")}</tr></thead><tbody>`;
+  for (const r of rl) {
+    const a = R(r).a, b = R(r).b, eff = x => x.corner ? `<span class="chip warn">no rate</span>` : (x.converged ? pct(x.effective) : `<span class="chip bad">not conv.</span>`);
+    h += `<tr><td>${R(r).label}</td><td><span class="chip">${R(r).predicate}</span></td><td class="num">${eff(a)}</td><td class="num">${eff(b)}</td><td class="num">${pct(a.revenue_per_base)}</td><td class="num">${pct(b.revenue_per_base)}</td><td class="num">${a.corner ? "bound" : f3(a.mean_tau)}</td><td class="num">${f3(a.revenue)}</td><td class="num">${pct(a.gap)}</td><td class="num">${pct(a.overlap)}</td><td class="num">${pct(a.unobserved)}</td><td class="num">${pct(a.exit)}</td></tr>`;
+    rows.push([R(r).label, R(r).predicate, a.effective, b.effective, a.revenue_per_base, b.revenue_per_base, a.mean_tau, a.revenue, a.gap, a.overlap, a.unobserved, a.exit]);
+  }
+  c.host.innerHTML = h + "</tbody></table></div>"; c.root.querySelector('[data-x="png"]').hidden = true; c.root.querySelector('[data-x="svg"]').hidden = true; setData("c-table", rows);
+}
+
+function rates(box) {
+  const rl = ruleList().filter(r => !R(r).a.corner);
+  const metrics = { effective: [P("Effective rate: tax collected per 100 units the rule assigns", "Effective rate (rule revenue ÷ assigned base)"), pct], revenue_per_base: [P("Yield: tax collected per 100 units still in digital assets", "Yield (all revenue ÷ base in the asset class)"), pct], mean_tau: [P("Headline rate (not comparable across rules)", "Mean nominal rate"), f3] };
+  const c = card(box, "c-rates", "Sustainable rates under two equilibrium concepts", "(a) elasticity-consistent: each jurisdiction takes its sensitivity as given. (b) partial anticipation: each anticipates how its own rate changes its escape capacity, with the network held fixed.");
+  c.ctl.innerHTML = `<label>Measure <select id="rm">${Object.entries(metrics).map(([k, v]) => `<option value="${k}" ${k === S.rateMetric ? "selected" : ""}>${v[0]}</option>`).join("")}</select></label>`;
+  $("rm").onchange = e => { S.rateMetric = e.target.value; render(); };
+  const [lab, fmt] = metrics[S.rateMetric];
+  const miss = rl.map(r => (R(r).a.converged ? null : "not converged"));
+  hBars(c.host, { cats: rl.map(r => ({ label: short(r), extra: `by jurisdiction (a): ${R(r).a.tau.map(f2).join(", ")}` })), fmt, xLabel: lab,
+    series: [{ name: CA(), color: "--s1", values: rl.map(r => R(r).a.converged ? R(r).a[S.rateMetric] : null), missing: miss },
+             { name: CB(), color: "--s2", values: rl.map(r => R(r).b.converged ? R(r).b[S.rateMetric] : null), missing: miss }] });
+  legend(c.host, [[CA_LONG(), "--s1"], [CB_LONG(), "--s2"]]);
+  setData("c-rates", [["rule", "a", "b"], ...rl.map(r => [short(r), R(r).a[S.rateMetric], R(r).b[S.rateMetric]])]);
+  c.foot.innerHTML = `<p class="note">${P("The effective rate shows what a rule sustains on the holdings it lets states tax. The yield also counts holdings the rule leaves untaxed, so rules that leave much untaxed fall in that ranking. Where the two rankings differ, the untaxed share is the reason.", "Nominal rates are not comparable across rules: a claimant that cannot observe much of its base can post a high nominal rate that collects little. The effective rate measures what the rule itself sustains; the yield also counts base the rule leaves in the gap, so it penalises gap-creating rules. Where the two rankings differ, the difference is the gap.")}</p>`;
+
+  const g = document.createElement("div"); g.className = "grid2"; box.appendChild(g);
+  const c2 = card(g, "c-rank", "Pairwise ranking", "Row rule against column rule at the current parameters. Declared only where both concepts agree. Hover for the sweep.");
+  c2.ctl.innerHTML = rankSwitch("rk1"); bindRankSwitch("rk1");
+  const rr = ruleList().filter(r => !R(r).a.corner);
+  const sym = { ">": "▲", "<": "▼", tie: "=", unranked: "·" }; const sw = DATA.sweep?.draws || [];
+  const csv = [["row", "column", "verdict", "sweep_same", "sweep_ranked"]];
+  let h = `<div class="scroll"><table><thead><tr><th></th>${rr.map(r => `<th>${short(r).slice(0, 6)}</th>`).join("")}</tr></thead><tbody>`;
+  for (const r1 of rr) {
+    h += `<tr><th style="text-align:right">${short(r1)}</th>`;
+    for (const r2 of rr) {
+      if (r1 === r2) { h += `<td style="text-align:center;color:var(--muted)">·</td>`; continue; }
+      let key = `${r1}|${r2}`, v = RK()[key], flip = false;
+      if (v === undefined) { key = `${r2}|${r1}`; v = RK()[key]; flip = true; }
+      const vv = flip && (v === ">" || v === "<") ? (v === ">" ? "<" : ">") : v;
+      const hold = sw.map(d => RKd(d)[key]).filter(x => x && x !== "unranked"); const same = hold.filter(x => x === v).length;
+      csv.push([short(r1), short(r2), vv, same, hold.length]);
+      const col = vv === ">" ? "var(--s1)" : vv === "<" ? "var(--s2)" : "var(--muted)";
+      h += `<td style="text-align:center;color:${col};font-family:var(--font-data)" data-tip="${short(r1)} ${vv === ">" ? "above" : vv === "<" ? "below" : vv === "tie" ? "tied with" : "unranked against"} ${short(r2)}.<br>Same verdict in ${same} of ${hold.length} ranked sweep draws.">${sym[vv]}</td>`;
+    }
+    h += "</tr>";
+  }
+  c2.host.innerHTML = h + `</tbody></table></div><p class="note">▲ row higher · ▼ lower · = concepts disagree</p>`;
+  c2.host.querySelectorAll("td[data-tip]").forEach(td => hover(td, td.dataset.tip));
+  c2.root.querySelector('[data-x="png"]').hidden = true; c2.root.querySelector('[data-x="svg"]').hidden = true; setData("c-rank", csv);
+
+  const c3 = card(g, "c-net-effect", "What the network adds", "Effective rate with β set to zero against the current β. The difference is the network channel's contribution.");
+  const ne = DATA.network_effect;
+  hBars(c3.host, { cats: rl.map(r => ({ label: short(r) })), fmt: pct, xLabel: "Effective rate", labelW: 120,
+    series: NE().map(([n, col, k]) => ({ name: n, color: col, values: rl.map(r => ne[r][k]) })) });
+  legend(c3.host, NE().map(([n, col]) => [n, col]));
+  setData("c-net-effect", [["rule", "a_beta0", "a", "b_beta0", "b"], ...rl.map(r => [short(r), ne[r].a0, ne[r].a, ne[r].b0, ne[r].b])]);
+}
+
+function NE() { return PL() ? [["View A, escape routes off", "--s3", "a0"], ["View A, escape routes on", "--s1", "a"], ["View B, escape routes off", "--s4", "b0"], ["View B, escape routes on", "--s2", "b"]]
+  : [["(a) β = 0", "--s3", "a0"], ["(a) current β", "--s1", "a"], ["(b) β = 0", "--s4", "b0"], ["(b) current β", "--s2", "b"]]; }
+function networks(box) {
+  const c = card(box, "c-net", "The network each rule induces", "A transfer is a cross-border flow only if the rule assigns its two ends to different jurisdictions. Node size: assigned base. Shade: sustainable nominal rate. Line width: flow.");
+  c.ctl.innerHTML = `<label>Rule <select id="nr">${ruleList().map(r => `<option value="${r}" ${r === S.netRule ? "selected" : ""}>${R(r).label}</option>`).join("")}</select></label>
+    <label>${P("View", "Concept")} <select id="nc"><option value="a" ${S.netConcept === "a" ? "selected" : ""}>${CA_LONG()}</option><option value="b" ${S.netConcept === "b" ? "selected" : ""}>${CB_LONG()}</option></select></label>
+    <label>Hide flows below <input id="nt" type="range" min="0" max="0.3" step="0.01" value="${S.netThreshold}"> <span class="mono" id="ntv">${pct(S.netThreshold)}</span> of the largest</label>`;
+  $("nr").onchange = e => { S.netRule = e.target.value; render(); }; $("nc").onchange = e => { S.netConcept = e.target.value; render(); };
+  $("nt").oninput = e => { S.netThreshold = +e.target.value; $("ntv").textContent = pct(S.netThreshold); drawNet(c); };
+  drawNet(c);
+}
+function drawNet(c) {
+  const d = R(S.netRule)[S.netConcept], N = d.tau.length, W = 720, H = 430, cx = 250, cy = H / 2, rad = 150;
+  const s = svgRoot(c.host, W, H, `Network under ${R(S.netRule).label}`);
+  const JC = i => `var(--s${(i % 6) + 1})`, defs = el("defs", {}, s);
+  for (let i = 0; i < N; i++) { const mk = el("marker", { id: "arr" + i, viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 8, markerHeight: 8, markerUnits: "userSpaceOnUse", orient: "auto" }, defs); el("path", { d: "M0,0 L10,5 L0,10 z", fill: JC(i) }, mk); }
+  const pos = [...Array(N)].map((_, i) => [cx + rad * Math.cos(-Math.PI / 2 + i * 2 * Math.PI / N), cy + rad * Math.sin(-Math.PI / 2 + i * 2 * Math.PI / N)]);
+  const F = d.F, fmax = Math.max(1e-12, ...F.flat()), amax = Math.max(1e-12, ...d.assigned), nr = i => 9 + 22 * Math.sqrt(d.assigned[i] / amax);
+  const all = ruleList().filter(r => !R(r).a.corner).flatMap(r => R(r)[S.netConcept].tau), lo = Math.min(...all), hi = Math.max(...all);
+  const rows = [["from", "to", "flow"]];
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+    if (i === j) continue; rows.push([`J${i + 1}`, `J${j + 1}`, F[i][j]]); if (F[i][j] < fmax * S.netThreshold) continue;
+    const [x1, y1] = pos[i], [x2, y2] = pos[j], L = Math.hypot(x2 - x1, y2 - y1), ux = (x2 - x1) / L, uy = (y2 - y1) / L;
+    const sx = x1 + ux * nr(i), sy = y1 + uy * nr(i), ex = x2 - ux * (nr(j) + 3), ey = y2 - uy * (nr(j) + 3), mx = (sx + ex) / 2 - uy * 20, my = (sy + ey) / 2 + ux * 20;
+    const w = 0.6 + 3.4 * Math.sqrt(F[i][j] / fmax), dd = `M${sx},${sy} Q${mx},${my} ${ex},${ey}`;
+    el("path", { d: dd, fill: "none", stroke: JC(i), "stroke-opacity": 0.75, "stroke-width": w, "marker-end": `url(#arr${i})` }, s);
+    hover(el("path", { d: dd, fill: "none", stroke: "transparent", "stroke-width": Math.max(10, w + 6) }, s), `J${i + 1} → J${j + 1}: flow ${F[i][j].toFixed(5)}`);
+  }
+  for (let i = 0; i < N; i++) {
+    const [x, y] = pos[i]; el("circle", { cx: x, cy: y, r: nr(i), fill: seqColor(d.tau[i], lo, hi), stroke: JC(i), "stroke-width": 4 }, s);
+    const ox = (x - cx) / rad, oy = (y - cy) / rad;
+    txt(s, x + ox * (nr(i) + 14), y + oy * (nr(i) + 14) + 4, `J${i + 1} · ${f2(d.tau[i])}`, { style: `fill:${JC(i)};font-weight:700`, "text-anchor": Math.abs(ox) < 0.2 ? "middle" : ox > 0 ? "start" : "end" });
+    hover(el("circle", { cx: x, cy: y, r: nr(i) + 4, class: "hit" }, s), `<b>J${i + 1}</b><br>nominal rate ${f3(d.tau[i])} · θ ${f2(d.theta[i])}<br>assigned base ${pct(d.assigned[i])}<br>revenue ${f3(d.revenue_by[i])} · round-trip capacity ${d.Z[i].toFixed(4)}`);
+  }
+  const tx = 546; txt(s, tx - 14, 30, P("State", "Juris."), { class: "tick" }); txt(s, tx + 82, 30, P("Taxable", "Assigned"), { class: "tick", "text-anchor": "end" }); txt(s, tx + 124, 30, "Rate", { class: "tick", "text-anchor": "end" }); txt(s, tx + 174, 30, P("React.", "θ"), { class: "tick", "text-anchor": "end" });
+  for (let i = 0; i < N; i++) { const y = 54 + i * 22; el("rect", { x: tx - 14, y: y - 10, width: 10, height: 10, rx: 2, fill: JC(i) }, s); txt(s, tx, y, `J${i + 1}`, { class: "lab" }); txt(s, tx + 82, y, pct(d.assigned[i]), { class: "tick", "text-anchor": "end" }); txt(s, tx + 124, y, f3(d.tau[i]), { class: "tick", "text-anchor": "end" }); txt(s, tx + 174, y, f2(d.theta[i]), { class: "tick", "text-anchor": "end" }); }
+  txt(s, tx - 14, 54 + N * 22 + 10, P(`Untaxed: ${pct(d.gap)}`, `Gap ${pct(d.gap)}`), { class: "tick" });
+  txt(s, tx - 14, 54 + N * 22 + 28, P(`Left digital assets: ${pct(d.exit)}`, `Exit ${pct(d.exit)}`), { class: "tick" });
+  const ky = 54 + N * 22 + 74; txt(s, tx - 14, ky - 8, P("Circle fill: tax rate", "Fill: nominal rate τ"), { class: "tick" });
+  ["--seq-1", "--seq-2", "--seq-3", "--seq-4", "--seq-5", "--seq-6"].forEach((c, k) => el("rect", { x: tx - 14 + k * 30, y: ky, width: 28, height: 12, rx: 2, fill: `var(${c})` }, s));
+  txt(s, tx - 14, ky + 28, `${P("lower", "low")} ${f2(lo)}`, { class: "tick" }); txt(s, tx + 166, ky + 28, `${f2(hi)} ${P("higher", "high")}`, { class: "tick", "text-anchor": "end" });
+  txt(s, tx - 14, 54 + N * 22 + 46, d.converged ? P(`Rates settled after ${d.iterations} rounds`, `Converged in ${d.iterations} iterations`) : P("Rates did not settle", "Did not converge"), { class: "tick" });
+  setData("c-net", rows);
+}
+
+function leakage(box) {
+  const rl = ruleList();
+  const c = card(box, "c-leak", "Where the base goes after a rate rise", "Each jurisdiction in turn raises its rate by 2 and by 5 points; bars average the shocks (hover for the range). Own activity: migration or round-tripping. Foreign activity the jurisdiction hosted: conduit switching or foreign relocation. Either may also move into the gap or leave the asset class.");
+  stacked(c.host, { cats: rl.map(r => ({ label: short(r), missing: "no rate to raise" })), parts: LEAK, rows: rl.map(r => R(r).leakage.valid ? R(r).leakage : null), xLabel: P("Share of the holdings lost", "Share of base lost") });
+  legend(c.host, LEAK.map(([, n, col]) => [n, col]));
+  setData("c-leak", [["rule", ...LEAK.map(x => x[0]), "alignment"], ...rl.filter(r => R(r).leakage.valid).map(r => [short(r), ...LEAK.map(x => R(r).leakage[x[0]]), R(r).leakage.alignment])]);
+  c.foot.innerHTML = `<p class="note">${P("How attached holders are to where they really operate decides whether they restructure (change the legal hook) or physically move. Change it under 'How holders behave'.", "σ (stickiness of economic location) governs how far holders change predicate rather than location. With σ = 0 the model substitutes without regard to location, which overstates relocation.")}</p>`;
+}
+
+function gap(box) {
+  const { phis, rhos, grid } = DATA.prop3;
+  const c = card(box, "c-gap", "When is the gap the costlier failure?", "Matched pair: rules X and Y treat custodial holdings identically and differ only where a self-hosted key sits abroad, which X leaves unassigned and Y claims twice. Cell: revenue forgone on X's gap minus the unrelieved double burden under Y. Red: the gap costs more.");
+  const diffs = grid.map(c => c.gap_cost - c.overlap_cost), amax = Math.max(1e-9, ...diffs.map(Math.abs));
+  const W = 720, m = { l: 70, r: 12, t: 8, b: 44 }, cw = (W - m.l - m.r) / rhos.length, ch = 40, H = m.t + m.b + ch * phis.length;
+  const s = svgRoot(c.host, W, H, "Gap cost minus overlap cost");
+  phis.forEach((p, i) => {
+    txt(s, m.l - 8, m.t + ch * i + ch / 2 + 4, f2(p), { class: "tick", "text-anchor": "end" });
+    rhos.forEach((r, j) => {
+      const g = grid.find(x => x.phi === p && x.rho === r), d = g.gap_cost - g.overlap_cost, t = Math.min(1, Math.abs(d) / amax), x = m.l + cw * j + 1, y = m.t + ch * i + 1;
+      el("rect", { x, y, width: cw - 2, height: ch - 2, rx: 3, fill: "var(--div-mid)" }, s);
+      el("rect", { x, y, width: cw - 2, height: ch - 2, rx: 3, fill: d >= 0 ? "var(--div-pos)" : "var(--div-neg)", "fill-opacity": (0.1 + 0.9 * t).toFixed(2) }, s);
+      txt(s, x + (cw - 2) / 2, y + ch / 2 + 3, (d >= 0 ? "+" : "") + d.toFixed(3), { "text-anchor": "middle", style: `font-family:var(--font-data);font-size:11px;fill:${t > 0.55 ? "var(--on-strong)" : "var(--ink)"}` });
+      hover(el("rect", { x, y, width: cw - 2, height: ch - 2, class: "hit" }, s), `φ ${p} · ρ ${r}<br>gap cost ${f3(g.gap_cost)} (gap volume ${pct(g.gap_volume)})<br>overlap cost ${f3(g.overlap_cost)} (overlap volume ${pct(g.overlap_volume)})${g.converged ? "" : "<br>not converged"}`);
+    });
+  });
+  rhos.forEach((r, j) => txt(s, m.l + cw * j + cw / 2, H - m.b + 18, f2(r), { class: "tick", "text-anchor": "middle" }));
+  txt(s, m.l + (W - m.l - m.r) / 2, H - 6, P("Treaty relief for double taxation (ρ): none → full", "ρ: treaty relief efficiency on overlap"), { "text-anchor": "middle" });
+  txt(s, 14, m.t + ch * phis.length / 2, P("Residence top-up (φ)", "φ: residence backstop"), { "text-anchor": "middle", transform: `rotate(-90 14 ${m.t + ch * phis.length / 2})` });
+  legend(c.host, P([["Leaving it untaxed costs more", "--div-pos"], ["Taxing it twice costs more", "--div-neg"]], [["Gap costs more", "--div-pos"], ["Overlap costs more", "--div-neg"]]));
+  setData("c-gap", [["phi", "rho", "gap_cost", "overlap_cost", "gap_volume", "overlap_volume"], ...grid.map(g => [g.phi, g.rho, g.gap_cost, g.overlap_cost, g.gap_volume, g.overlap_volume])]);
+  c.foot.innerHTML = `<p class="note">The two costs fall on different parties (the state loses revenue; taxpayers bear unrelieved tax) and are compared here at equal weight. The gap cost is not monotone in φ: a weak backstop (around 0.15) lets source jurisdictions raise their rates, which pushes more base into the gap, so forgone revenue rises before it falls. This is an equilibrium effect of the model, not a calculation error.</p>`;
+}
+
+function observation(box) {
+  const rl = ruleList().filter(r => !R(r).a.corner);
+  const c = card(box, "c-obs", "Better observation of self-hosted holdings", "Equilibrium with self-hosted observability at its default and raised (set in the Observation group).");
+  const opts = { effective: ["Effective rate", pct], revenue: ["Revenue", f3], mean_tau: ["Mean nominal rate", f3] };
+  c.ctl.innerHTML = `<label>Measure <select id="om">${Object.entries(opts).map(([k, v]) => `<option value="${k}" ${k === S.obsMetric ? "selected" : ""}>${v[0]}</option>`).join("")}</select></label>`;
+  $("om").onchange = e => { S.obsMetric = e.target.value; render(); };
+  const [lab, fmt] = opts[S.obsMetric];
+  hBars(c.host, { cats: rl.map(r => ({ label: short(r), extra: `unobserved base ${pct(R(r).a.unobserved)} → ${pct(DATA.enforcement[r].unobserved)}` })), fmt, xLabel: lab,
+    series: [{ name: "Default observation", color: "--s1", values: rl.map(r => R(r).a[S.obsMetric]) }, { name: "Observation raised", color: "--s2", values: rl.map(r => DATA.enforcement[r][S.obsMetric]) }] });
+  legend(c.host, P([["Today's visibility", "--s1"], ["Improved visibility", "--s2"]], [["Default observation", "--s1"], ["Observation raised", "--s2"]]));
+  setData("c-obs", [["rule", "default", "raised"], ...rl.map(r => [short(r), R(r).a[S.obsMetric], DATA.enforcement[r][S.obsMetric]])]);
+}
+
+function prop1(box) {
+  const rows = DATA.prop1.slice().sort((a, b) => a.network - b.network);
+  const c = card(box, "c-p1", "Similar networks, different outcomes?", "For each pair of rules: distance between induced networks, base distributions, and incidence of gap, overlap and unobserved base, against the difference in effective rate.");
+  const pts = rows.map(d => ({ x: d.network, y: d.outcome, g: d.third_channel ? 1 : 0, tip: `<b>${short(d.pair[0])} · ${short(d.pair[1])}</b><br>network ${f3(d.network)} · base ${f3(d.base)}<br>incidence ${f3(d.incidence)} · effective-rate gap ${f3(d.outcome)}` }));
+  scatter(c.host, { pts, xLabel: P("How different the cross-border networks are", "Network distance"), yLabel: P("Difference in tax sustained", "Difference in effective rate"), groups: ["--s1", "--s2"] });
+  legend(c.host, [[P("Pair of rules", "Pair"), "--s1"], [P("Similar networks, different results (third channel)", "Close networks and bases, different outcomes"), "--s2"]]);
+  let h = `<div class="scroll"><table><thead><tr><th>Pair</th><th class="num">Network</th><th class="num">Base</th><th class="num">Incidence</th><th class="num">Effective-rate gap</th><th></th></tr></thead><tbody>`;
+  for (const d of rows) h += `<tr><td>${short(d.pair[0])} · ${short(d.pair[1])}</td><td class="num">${f3(d.network)}</td><td class="num">${f3(d.base)}</td><td class="num">${f3(d.incidence)}</td><td class="num">${f3(d.outcome)}</td><td>${d.third_channel ? `<span class="chip accent">third channel</span>` : ""}</td></tr>`;
+  c.foot.innerHTML = h + "</tbody></table></div>";
+  setData("c-p1", [["pair", "network", "base", "incidence", "outcome"], ...rows.map(d => [d.pair.join(" | "), d.network, d.base, d.incidence, d.outcome])]);
+}
+
+function sensitivity(box) {
+  const sw = DATA.sweep?.draws || [];
+  if (!sw.length) { box.innerHTML = `<p class="note">This run had no sensitivity draws. Set the number of draws in the Run box and run again.</p>`; return; }
+  const c = card(box, "c-sw", "How often each ranking holds across the sweep", `${sw.length} draws varying β, θ₀, ρ, φ, σ, relief smoothing, predicate mobility and the world seed.`);
+  c.ctl.innerHTML = rankSwitch("rk2"); bindRankSwitch("rk2");
+  const keys = Object.keys(RK()), rows = [["pair", "default", "same", "opposite", "tie", "unranked"]];
+  const cats = [], same = [], opp = [], tie = [];
+  for (const k of keys) {
+    const v = RK()[k], hold = sw.map(d => RKd(d)[k]); const [a, b] = k.split("|");
+    const n = hold.length; const sm = hold.filter(x => x === v && (v === ">" || v === "<")).length, op = hold.filter(x => (x === ">" || x === "<") && x !== v).length, ti = hold.filter(x => x === "tie").length, un = hold.filter(x => x === "unranked").length;
+    if (v === "unranked") continue;
+    cats.push({ label: `${short(a)} ${v === ">" ? ">" : v === "<" ? "<" : "≈"} ${short(b)}` }); same.push(sm / n); opp.push(op / n); tie.push(ti / n);
+    rows.push([k, v, sm, op, ti, un]);
+  }
+  hBars(c.host, { cats, fmt: pct, xLabel: P("Share of robustness reruns", "Share of sweep draws"), max: 1, labelW: 230,
+    series: [{ name: "Same verdict", color: "--s1", values: same }, { name: "Opposite verdict", color: "--s2", values: opp }, { name: "Concepts disagree", color: "--s4", values: tie }] });
+  legend(c.host, [[P("Same result", "Same verdict"), "--s1"], [P("Reversed", "Opposite verdict"), "--s2"], [P("Views A and B disagree", "Concepts disagree"), "--s4"]]);
+  setData("c-sw", rows);
+}
+
+function explorer(box) {
+  const rl = ruleList();
+  const M = { effective: ["Effective rate", pct, x => x.effective], mean_tau: ["Mean nominal rate", f3, x => x.mean_tau], revenue: ["Revenue", f3, x => x.revenue],
+              revenue_per_base: ["Yield per unit of class base", pct, x => x.revenue_per_base], gap: ["Gap share", pct, x => x.gap], overlap: ["Overlap share", pct, x => x.overlap],
+              unobserved: ["Unobserved share", pct, x => x.unobserved], exit: ["Exit share", pct, x => x.exit], network_share: ["Network share of θ", pct, x => x.network_share] };
+  const c = card(box, "c-ex1", "Compare rules on any measure", "Pick a measure and an equilibrium concept.");
+  c.ctl.innerHTML = `<label>Measure <select id="em">${Object.entries(M).map(([k, v]) => `<option value="${k}" ${k === S.exMetric ? "selected" : ""}>${v[0]}</option>`).join("")}</select></label>
+    <label>${P("View", "Concept")} <select id="ec"><option value="a" ${S.exConcept === "a" ? "selected" : ""}>${CA()}</option><option value="b" ${S.exConcept === "b" ? "selected" : ""}>${CB()}</option><option value="ab" ${S.exConcept === "ab" ? "selected" : ""}>both</option></select></label>`;
+  $("em").onchange = e => { S.exMetric = e.target.value; render(); }; $("ec").onchange = e => { S.exConcept = e.target.value; render(); };
+  const [lab, fmt, get] = M[S.exMetric]; const ser = [];
+  if (S.exConcept !== "b") ser.push({ name: CA(), color: "--s1", values: rl.map(r => get(R(r).a)) });
+  if (S.exConcept !== "a") ser.push({ name: CB(), color: "--s2", values: rl.map(r => get(R(r).b)) });
+  hBars(c.host, { cats: rl.map(r => ({ label: short(r) })), series: ser, fmt, xLabel: lab }); legend(c.host, ser.map(s => [s.name, s.color]));
+  setData("c-ex1", [["rule", ...ser.map(s => s.name)], ...rl.map((r, i) => [short(r), ...ser.map(s => s.values[i])])]);
+
+  const sw = DATA.sweep?.draws || [];
+  const c2 = card(box, "c-ex2", "Plot the sweep", sw.length ? "Each dot is one sweep draw for one rule. Choose the parameter, the outcome, and up to three rules." : "No sweep in this run.");
+  if (!sw.length) return;
+  const XP = PL() ? { beta: "Weight of escape routes (β)", sigma: "Attachment to real location (σ)", mobility_scale: "Ease of switching connecting factor", theta0: "Holders' reaction to tax (θ₀)", rho: "Treaty relief (ρ)", phi: "Residence top-up (φ)" }
+    : { beta: "β", sigma: "σ", mobility_scale: "Predicate mobility", theta0: "θ₀", rho: "ρ", phi: "φ" };
+  const YM = { eff_a: `Effective rate, ${CA()}`, eff_b: `Effective rate, ${CB()}`, yield_a: `Yield, ${CA()}`, yield_b: `Yield, ${CB()}`, gap: P("Share untaxed (gap)", "Gap share"), ...Object.fromEntries(LEAK.map(([k, n]) => ["leak:" + k, "Leakage: " + n])) };
+  c2.ctl.innerHTML = `<label>Parameter <select id="sx">${Object.entries(XP).map(([k, v]) => `<option value="${k}" ${k === S.swX ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+    <label>Outcome <select id="sy">${Object.entries(YM).map(([k, v]) => `<option value="${k}" ${k === S.swY ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+    ${[0, 1, 2].map(i => `<label>Rule ${i + 1} <select id="sr${i}"><option value="">none</option>${rl.map(r => `<option value="${r}" ${S.swRules[i] === r ? "selected" : ""}>${short(r)}</option>`).join("")}</select></label>`).join("")}`;
+  $("sx").onchange = e => { S.swX = e.target.value; render(); }; $("sy").onchange = e => { S.swY = e.target.value; render(); };
+  [0, 1, 2].forEach(i => $("sr" + i).onchange = e => { S.swRules[i] = e.target.value; render(); });
+  const groups = ["--s1", "--s2", "--s3"], pts = [], rows = [["draw", "rule", XP[S.swX], YM[S.swY]]];
+  S.swRules.forEach((r, gi) => { if (!r) return; sw.forEach((d, k) => {
+    const v = d.rules[r]; if (!v || !v.converged) return;
+    const y = S.swY.startsWith("leak:") ? (v.leak ? v.leak[S.swY.slice(5)] : null) : v[S.swY]; if (y == null) return;
+    pts.push({ x: d.params[S.swX], y, g: gi, tip: `<b>${short(r)}</b>, draw ${k + 1}<br>${XP[S.swX]} ${d.params[S.swX]}<br>${YM[S.swY]} ${f3(y)}` }); rows.push([k + 1, short(r), d.params[S.swX], y]); }); });
+  if (!pts.length) { c2.host.innerHTML = `<p class="note">No converged draws for this selection.</p>`; return; }
+  scatter(c2.host, { pts, xLabel: XP[S.swX], yLabel: YM[S.swY], groups });
+  legend(c2.host, S.swRules.map((r, i) => r ? [short(r), groups[i]] : null).filter(Boolean));
+  setData("c-ex2", rows);
+}
+
+function register(box) {
+  const reg = DATA.register;
+  const c = card(box, "c-reg1", "Model outputs", "What the model computes at the current parameters, kept only where it holds across the sweep. These are properties of the model, not predictions about the world.");
+  c.root.querySelector(".tools").hidden = true;
+  c.host.innerHTML = `<div class="reg" style="display:grid;gap:10px">${reg.model_outputs.map(o => `<article><div class="eyebrow">${o.kind}</div><div>${o.statement}</div><div class="note">${o.support}</div></article>`).join("") || `<p class="note">No output held across the sweep.</p>`}</div><p class="mono" style="margin-top:10px">Fingerprint ${reg.date} · SHA-256 ${reg.fingerprint}</p>`;
+  const c2 = card(box, "c-reg2", "Observable hypotheses (draft)", "Statements in terms data could test. Not frozen: each needs a data mapping and pre-registration before any data are examined.");
+  c2.root.querySelector(".tools").hidden = true;
+  c2.host.innerHTML = `<div class="reg" style="display:grid;gap:10px">${reg.hypotheses.map(h => `<article><div class="eyebrow">${h.id}</div><div>${h.statement}</div><div class="note">Data: ${h.data}</div><div class="note">${h.status}</div></article>`).join("")}</div>`;
+  const c3 = card(box, "c-reg3", "Parameters of this run", `Generated ${DATA.generated}${DATA.elapsed_seconds ? ` in ${DATA.elapsed_seconds} s` : ""}.`);
+  c3.root.querySelector('[data-x="png"]').hidden = true; c3.root.querySelector('[data-x="svg"]').hidden = true;
+  const p = DATA.params; c3.host.innerHTML = `<div class="scroll"><table><tbody>${Object.entries(p).map(([k, v]) => `<tr><td>${k}</td><td class="num">${v}</td></tr>`).join("")}</tbody></table></div>`;
+  setData("c-reg3", [["parameter", "value"], ...Object.entries(p)]);
+}
+
+/* ================= coded world (mixed regimes, build plan s 12) ================= */
+let WD = null, wpolling = null;
+Object.assign(S, { wConcept: "a", wConfig: "custodial", wMetric: "revenue", cfCode: null, cfRule: "residence" });
+const RULE_PLAIN = { residence: "Residence", residence_citizenship: "Residence + citizenship", intermediary: "Exchange location", control: "Key control",
+  enclosure: "Infrastructure", registration: "Registration", validation: "Validation place", none: "No assignment" };
+const WJC = i => `var(--s${(i % 6) + 1})`;
+Object.assign(EX, {
+  "c-w-load": { title: "Load the jurisdictions to compare",
+    what: "The jurisdictions this tab models, each with its own rule for which holdings it taxes. They come from an Excel workbook you fill in (the coding template).",
+    read: "Download the blank template for the real-world sample, fill one row per jurisdiction with the law as at the scenario year, cite a source and mark each row verified once checked, then upload it. The illustrative template shows a completed example using invented states.",
+    means: "This is where legal research enters the model. Every result on this tab depends on how the law has been coded, so the coding should be as careful as a footnote." },
+  "c-w-treaty": { title: "Relief from double tax between pairs of states",
+    what: "Where two states tax the same holding, how much of the double tax the second state relieves, as coded for each pair.",
+    read: "Each row is one direction: the state giving relief, for tax charged first by the other. 'Both ways' means the same relief applies in reverse. Pairs not listed use the default shown at the top.",
+    means: "Double taxation is only a cost to the extent it is not relieved. The paper's comparison of gaps and overlaps turns on how much relief is actually available between the states concerned." },
+  "c-w-rules": { title: "The rules as coded",
+    what: "One row per jurisdiction: the connecting factor it taxes on, who collects the tax, what its authority can see, and its rate.",
+    read: "A rate shown as a number is fixed at the coded value; 'set by competition' means the model chooses it. Rows marked 'unverified' have not yet been checked against their source.",
+    means: "Check this table before reading any result: it is the model's understanding of the law." },
+  "c-w-mm": { title: "Who may tax what: the mismatch map",
+    what: "For a holder living in the row state and keeping a holding in the column state, which states claim the right to tax it under their own rules.",
+    read: "Red squares are gaps (no state claims). Pale squares have one claimant. Amber squares are claimed twice, and magenta three times or more; the first code listed taxes first, the others give relief. For exchange-held holdings, each column is a kind of exchange: where it operates, with 'inc.' showing where it is incorporated if that is elsewhere. Faded columns are exchanges a state prohibits. Use the menu to switch between exchange-held, self-held and multi-signature holdings.",
+    means: "This needs no economic assumptions at all: it is the coded law run through the paper's assignment logic. Gaps and overlaps here arise from mismatches between states' rules, not from any single rule." },
+  "c-w-table": { title: "Results by jurisdiction",
+    what: "For each jurisdiction, once rates have settled: its rate, the tax it collects, and how its residents' holdings fare.",
+    read: "Untaxed: share of residents' holdings that no state may tax. Taxed twice: share claimed by two or more states. Housed here: share of all holdings kept in this state, which shows where hubs attract holdings. Unseen: holdings this state may tax but cannot see.",
+    means: "Shows who gains and who loses from the current combination of rules." },
+  "c-w-place": { title: "Where holders live and where holdings are kept",
+    what: "Each state's share of holders (by residence) against its share of holdings (by where they are kept).",
+    read: "Where the second bar is longer than the first, the state attracts holdings from abroad (typical of hubs). Where it is shorter, its residents keep holdings elsewhere.",
+    means: "The gap between the two bars is the cross-border routing that assignment rules either capture or miss." },
+  "c-w-leak": { title: "Where holdings go when each state raises its tax",
+    what: "Each state in turn raises its rate slightly; the bar shows where the holdings it loses end up.",
+    read: "Same categories as the main 'Where the base goes' tab: migration, round-tripping, conduit switching, foreign relocation, into the gap, or leaving digital assets.",
+    means: "Shows which states' bases are most exposed to routing through others' rules." },
+  "c-w-cf": { title: "What if one state changed its rule?",
+    what: "Re-runs the world with one jurisdiction's liability rule changed, everything else held at its coded value.",
+    read: "Pick a jurisdiction and a new rule, then press Run. Bars compare each state's tax before and after; the summary shows how the untaxed and doubly taxed shares change.",
+    means: "This is the policy question the paper's framework is built to answer: the effect of one state's choice of connecting factor on everyone else." },
+});
+TAB_NAMES.world = ["Real-world sample", "Coded world"];
+GLOSS.push(["Coded world (real-world sample) terms", [
+  ["Liability rule", "The connecting factor a state uses to claim the right to tax a holding: where the holder lives, where the exchange is, where the key is controlled, and so on.", "Assignment predicate per jurisdiction (mixed regime).", "--s1"],
+  ["Collection", "Who collects the tax. If domestic exchanges withhold it, the authority sees holdings at those exchanges fully.", "Domestic withholding sets custodial visibility at home to 1.", "--s2"],
+  ["Visibility and exchange of information", "What a tax authority can see. Holdings at foreign exchanges become visible only if both states exchange information automatically (as under CARF or DAC8) by the scenario year.", "Observability V[k, p] by claimant and placement; exchanged information at a set quality.", "--s3"],
+  ["Co-location", "The model assumes a holding is kept in one place, and the exchange seat, registration, infrastructure and key control all follow it. It cannot yet separate an exchange's legal seat from where it operates.", "Single placement p per option; all location-based predicates evaluated at p.", "--s4"],
+  ["Order of relief", "Where several states claim, the state where the exchange operates (or the holding is kept) taxes first, then the state where the exchange is incorporated, then the residence state, then a citizenship state; the later ones give relief.", "Primary = base claimant; secondaries ordered seat, cosigner, residence, citizenship; relief ρ[relieving, primary].", "--s5"],
+  ["Where an exchange operates and where it is incorporated", "An exchange can be run from one country (its operational base) and incorporated or licensed in another (its legal seat). Registration follows the seat; servers, key control and validation follow the base. A state taxing by 'location of the intermediary' uses its own test: incorporation or operations.", "Exchange-held options (j, base b, seat s); intermediary claim by s if test = seat, by b if test = base.", "--s1"],
+  ["Treaty relief by pair", "Relief from double tax depends on the pair of states, and runs one way: the state giving relief (usually the residence state) relieves tax charged first by the other. Pairs not coded use a default.", "Directional matrix ρ[q, p]; per-entry relief for each secondary against the primary.", "--s3"],
+  ["Fixed or competitive rate", "A fixed rate is taken from the coded law. A competitive rate is chosen by the model as the rate that maximises that state's revenue given the others.", "rate_mode per jurisdiction; best responses only for competitive states.", "--s6"],
+  ["Illustrative world", "A completed example made of invented states. Its rows are not anyone's law and must not be cited as such.", "Settings.illustrative = true.", "--muted"],
+]]);
+
+async function loadWorld() { try { WD = await api("/api/world/data"); } catch (e) { WD = null; } }
+function wbanner(host, msg, kind = "warn") { const d = document.createElement("div"); d.className = `banner ${kind}`; d.innerHTML = msg; host.appendChild(d); }
+
+function worldTab(box) {
+  if (!WD) { box.innerHTML = `<p class="note">Loading…</p>`; loadWorld().then(render); return; }
+  const w = WD.world, R0 = WD.result, cf = WD.cf;
+  // ---- load card
+  const c = card(box, "c-w-load", "Coded world: load or replace", "Jurisdictions with their own liability, collection and observation rules, read from the coding template (.xlsx).");
+  c.root.querySelector(".tools").hidden = true;
+  c.ctl.innerHTML = `<a href="/api/template/blank" download><button>${P("Download blank template (real sample)", "Blank template (real sample)")}</button></a>
+    <a href="/api/template/illustrative" download><button>${P("Download completed example (invented states)", "Illustrative template")}</button></a>
+    ${w ? `<a href="/api/template/current" download><button>${P("Download the loaded world", "Current world as template")}</button></a>` : ""}
+    <label class="filebtn"><button type="button" id="w-up-btn" class="primary">${P("Upload a filled template", "Upload template")}</button><input type="file" id="w-up" accept=".xlsx" hidden></label>
+    <button id="w-ill">${P("Use the invented example", "Load illustrative world")}</button>`;
+  $("w-up-btn").onclick = () => $("w-up").click();
+  $("w-up").onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    const r = await fetch("/api/world/load", { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: await f.arrayBuffer() });
+    const j = await r.json(); S.wUploadIssues = j.ok ? null : j.issues; await loadWorld(); render();
+  };
+  $("w-ill").onclick = async () => { await api("/api/world/illustrative", {}); S.wUploadIssues = null; await loadWorld(); render(); };
+  if (S.wUploadIssues) {
+    const errs = S.wUploadIssues.filter(i => i.level === "error");
+    wbanner(c.foot, `<b>${P("The template could not be loaded.", "Template rejected.")}</b> ${errs.length} ${errs.length === 1 ? "problem" : "problems"} to fix (first 12 shown):<ul>${errs.slice(0, 12).map(i => `<li>${i.where}: ${i.message}</li>`).join("")}</ul>`, "bad");
+  }
+  if (!w) { c.host.innerHTML = `<p class="note">${P("No jurisdictions loaded yet. Use the invented example to see how this works, or upload a filled template.", "No world loaded.")}</p>`; return; }
+  const ill = w.settings.illustrative, unv = R0 ? R0.unverified : [];
+  c.host.innerHTML = `<p><b>${w.settings.label}</b> · ${w.jurisdictions.length} ${P("jurisdictions", "jurisdictions")} · ${P("law as at", "scenario year")} ${w.settings.scenario_year}</p>`;
+  if (ill) wbanner(c.host, P("<b>Invented states.</b> This example shows how the tab works. Its rows are not anyone's law: do not cite the results as describing real countries.", "<b>Illustrative world:</b> hypothetical states; results are not evidence about real jurisdictions."));
+  const warns = (WD.issues || []).filter(i => i.level === "warning");
+  if (warns.length) wbanner(c.host, `${warns.length} ${P("warnings from the template", "template warnings")}: ${warns.slice(0, 6).map(i => `${i.where}: ${i.message}`).join("; ")}${warns.length > 6 ? "…" : ""}`);
+  // ---- coded rules
+  const c2 = card(box, "c-w-rules", "Coded rules", "Liability predicate, collection, observation, information exchange, rate mode and provenance per jurisdiction.");
+  c2.root.querySelector('[data-x="png"]').hidden = true; c2.root.querySelector('[data-x="svg"]').hidden = true;
+  const hdr = P(["", "Jurisdiction", "Taxes on", "Collected by", "Exchanges allowed", "Exchanges incorporated", "Shares information from", "Rate", "Checked", "Source"],
+                ["", "Jurisdiction", "Liability", "Collection", "Domestic exchanges", "Offshore seat", "AEOI from", "Rate", "Verified", "Source"]);
+  const rows = [["code", "name", "kind", "liability_rule", "intermediary_test", "collection", "domestic_exchanges_permitted", "offshore_incorporation_in", "offshore_incorporation_share", "info_exchange_from", "rate_mode", "effective_rate", "verified", "source"]];
+  let h = `<div class="scroll"><table><thead><tr>${hdr.map(x => `<th>${x}</th>`).join("")}</tr></thead><tbody>`;
+  w.jurisdictions.forEach((j, i) => {
+    h += `<tr><td><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${WJC(i)}"></i></td><td><b>${j.code}</b> ${j.name}${j.kind !== "economy" ? ` <span class="chip">${j.kind.replace(/_/g, " ")}</span>` : ""}</td>
+      <td>${P(RULE_PLAIN[j.liability_rule], j.liability_rule)}${j.liability_rule === "intermediary" ? ` <span class="chip">${P(j.intermediary_test === "base" ? "where it operates" : "where incorporated", "by " + (j.intermediary_test || "seat"))}</span>` : ""}</td><td>${j.collection === "domestic_withholding" ? P("Domestic exchanges (withholding)", "withholding") : P("Holder (self-assessment)", "self-assessment")}</td>
+      <td>${j.domestic_exchanges_permitted ? "yes" : `<span class="chip warn">prohibited</span>`}</td><td>${j.offshore_incorporation_in && j.offshore_incorporation_share > 0 ? `${pct(j.offshore_incorporation_share)} ${P("in", "in")} ${j.offshore_incorporation_in}` : P("here", "none")}</td><td>${j.info_exchange_from ?? P("never", "none")}</td>
+      <td class="num">${j.rate_mode === "fixed" ? pct(j.effective_rate || 0) : P("set by competition", "competitive")}</td>
+      <td>${j.verified ? `<span class="chip accent">yes</span>` : `<span class="chip bad">unverified</span>`}</td><td class="note" style="min-width:240px;max-width:340px">${j.source || "<i>none</i>"}</td></tr>`;
+    rows.push([j.code, j.name, j.kind, j.liability_rule, j.intermediary_test, j.collection, j.domestic_exchanges_permitted, j.offshore_incorporation_in, j.offshore_incorporation_share, j.info_exchange_from, j.rate_mode, j.effective_rate, j.verified, j.source]);
+  });
+  c2.host.innerHTML = h + "</tbody></table></div>"; setData("c-w-rules", rows);
+  const tr = w.treaties || [];
+  const c2b = card(box, "c-w-treaty", "Treaty relief by pair", "Directional relief: share of the double tax the relieving state relieves for tax levied first by the taxing state. Uncoded pairs use the default.");
+  c2b.root.querySelector('[data-x="png"]').hidden = true; c2b.root.querySelector('[data-x="svg"]').hidden = true;
+  let th2 = `<p>${P("Pairs not listed:", "Default ρ:")} <b>${pct(w.settings.treaty_relief)}</b> ${P("relief.", "")}</p>`;
+  if (tr.length) {
+    th2 += `<div class="scroll"><table><thead><tr><th>${P("State giving relief", "Relieving")}</th><th>${P("for tax charged by", "Taxing")}</th><th class="num">${P("Relief", "ρ")}</th><th>${P("Both ways", "Symmetric")}</th><th>${P("Checked", "Verified")}</th><th>Source</th></tr></thead><tbody>` +
+      tr.map(t => `<tr><td><b>${t.relieving}</b></td><td><b>${t.taxing}</b></td><td class="num">${pct(t.relief)}</td><td>${t.both_directions ? "yes" : "no"}</td><td>${t.verified ? `<span class="chip accent">yes</span>` : `<span class="chip bad">unverified</span>`}</td><td class="note">${t.source || "<i>none</i>"}</td></tr>`).join("") + `</tbody></table></div>`;
+  } else th2 += `<p class="note">${P("No pair-specific relief coded.", "No pairs coded.")}</p>`;
+  c2b.host.innerHTML = th2; setData("c-w-treaty", [["relieving", "taxing", "relief", "both_directions", "verified", "source"], ...tr.map(t => [t.relieving, t.taxing, t.relief, t.both_directions, t.verified, t.source])]);
+  // ---- run controls
+  const run = document.createElement("div"); run.className = "runbox";
+  run.innerHTML = `<div class="eyebrow">${P("Run this world", "Run")}</div><p class="note">${P("Uses the settings in the left-hand panel for how holders and states behave; treaty relief and each state's top-up come from the template.", "Behavioural parameters from the rail; ρ and φ per jurisdiction from the template.")}</p>
+    <div class="runrow"><button class="primary" id="w-run">${P("Run the coded world", "Run coded world")}</button><button id="w-cancel" disabled>Cancel</button><button id="w-save" ${R0 ? "" : "disabled"}>${P("Save results to Documents", "Save results")}</button></div>
+    <div class="prog"><i id="w-bar"></i></div><div class="note" id="w-label">${R0 ? `${P("Showing run of", "Run")} ${R0.generated.replace("T", " ")}` : P("Not run yet.", "Not run.")}</div>`;
+  box.appendChild(run);
+  $("w-run").onclick = async () => { try { await api("/api/world/run", { params: readForm() }); wstart(); } catch (e) { banner(e.message, "warn"); } };
+  $("w-cancel").onclick = () => api("/api/world/cancel", {}).catch(() => {});
+  $("w-save").onclick = async () => { try { const r = await api("/api/world/save", {}); banner(`Saved to <span class="mono">${r.folder}</span>`, "warn"); } catch (e) { banner(e.message, "warn"); } };
+  // ---- mismatch map (needs only the coded law)
+  const mm = R0 ? R0.mismatch : null;
+  if (R0 && JSON.stringify(R0.world.jurisdictions.map(j => [j.code, j.liability_rule])) !== JSON.stringify(w.jurisdictions.map(j => [j.code, j.liability_rule]))) {
+    wbanner(box, P("The loaded rules differ from the last run. Press <b>Run the coded world</b> to update the results below.", "World changed since last run; results below are stale."));
+  }
+  if (!R0) return;
+  const codes = R0.codes, names = R0.names, N = codes.length, con = S.wConcept, x = R0.concepts[con];
+  if (unv.length) wbanner(box, P(`<b>Unverified rows:</b> ${unv.join(", ")}. Results that depend on them are provisional.`, `Unverified: ${unv.join(", ")}.`));
+  const c3 = card(box, "c-w-mm", "Mismatch matrix", "Claimant set for each (residence, placement) pair under the coded predicates, plain residents (no personal links). First code is primary.");
+  const cfgName = { custodial: P("Held with an exchange", "custodial"), single: P("Self-held, one key", "single key"), multisig: P("Multi-signature", "multisig") };
+  c3.ctl.innerHTML = `<label>${P("Type of holding", "Configuration")} <select id="w-cfg">${Object.entries(cfgName).map(([k, v]) => `<option value="${k}" ${k === S.wConfig ? "selected" : ""}>${v}</option>`).join("")}</select></label>`;
+  $("w-cfg").onchange = e => { S.wConfig = e.target.value; render(); };
+  const MM = mm[S.wConfig], cols = MM.cols, Mc = MM.cells, NC = cols.length, ci = code => codes.indexOf(code);
+  const cw = Math.max(46, Math.min(78, (720 - 120) / NC)), ch = 34, W = 120 + cw * NC + 10, H = 58 + ch * N + 30;
+  const s = svgRoot(c3.host, W, H, "Mismatch matrix"); const fillFor = n => n === 0 ? "var(--div-pos)" : n === 1 ? "var(--rule-soft)" : n === 2 ? "var(--s4)" : "var(--s5)";
+  const BASIS = { base: P("where the exchange operates", "base"), seat: P("where the exchange is incorporated", "seat"), cosigner: P("co-signer", "cosigner"), residence: P("residence", "residence"), citizenship: P("citizenship", "citizenship"), placement: P("where it is kept", "placement") };
+  const csvM = [["resident_in", ...cols.map(c => c.label)]];
+  codes.forEach((rc, i) => {
+    txt(s, 112, 58 + ch * i + ch / 2 + 4, rc, { class: "lab", "text-anchor": "end", style: `fill:${WJC(i)};font-weight:700` });
+    const line = [rc];
+    cols.forEach((col, k) => {
+      const cell = Mc[i][k], X = 120 + cw * k, Y = 58 + ch * i;
+      el("rect", { x: X + 1, y: Y + 1, width: cw - 2, height: ch - 2, rx: 3, fill: fillFor(cell.n), "fill-opacity": col.prohibited ? 0.35 : 1 }, s);
+      txt(s, X + cw / 2, Y + ch / 2 + 4, cell.n ? cell.claimants.join("·") : P("none", "gap"), { "text-anchor": "middle", style: `font-family:var(--font-data);font-size:${cw < 60 ? 9 : 10}px;fill:${(cell.n === 0 || cell.n >= 3) && !col.prohibited ? "#fff" : "var(--ink)"}` });
+      const where = col.base === col.seat ? `<b>${names[ci(col.base)]}</b>` : `${P("an exchange operating in", "base")} <b>${names[ci(col.base)]}</b>, ${P("incorporated in", "seat")} <b>${names[ci(col.seat)]}</b>`;
+      hover(el("rect", { x: X, y: Y, width: cw, height: ch, class: "hit" }, s), `${P("Lives in", "Residence")} <b>${names[i]}</b>; ${P("holding kept in", "placement")} ${where}${col.prohibited ? `<br><i>${P("Exchanges are prohibited here, so few holdings take this route.", "Prohibited: near-zero weight.")}</i>` : ""}<br>${cell.n ? cell.claimants.map((q, n) => `${n === 0 ? P("taxes first", "primary") : P("gives relief", "secondary")}: ${q} (${BASIS[cell.basis[n]] || cell.basis[n]})`).join("<br>") : P("No state may tax this holding.", "Gap.")}`);
+      line.push(cell.claimants.join("+") || "gap");
+    });
+    csvM.push(line);
+  });
+  cols.forEach((col, k) => {
+    const X = 120 + cw * k + cw / 2;
+    txt(s, X, 34, col.base, { "text-anchor": "middle", style: `fill:${WJC(ci(col.base))};font-weight:700` });
+    if (col.base !== col.seat) txt(s, X, 48, `${P("inc.", "seat")} ${col.seat}`, { "text-anchor": "middle", class: "tick", style: `fill:${WJC(ci(col.seat))};font-size:10px` });
+    if (col.prohibited) txt(s, X, 48, P("banned", "prohib."), { "text-anchor": "middle", class: "tick", style: "font-size:10px" });
+  });
+  txt(s, 120 + cw * NC / 2, 14, S.wConfig === "custodial" ? P("Exchange the holding is kept with: where it operates (and where incorporated, if elsewhere) →", "Exchange type: base (seat) →") : P("Holding kept in →", "Placement →"), { "text-anchor": "middle", class: "tick" });
+  txt(s, 10, 58 + ch * N / 2, P("Holder lives in", "Residence"), { "text-anchor": "middle", class: "tick", transform: `rotate(-90 10 ${58 + ch * N / 2})` });
+  legend(c3.host, [[P("No state may tax (gap)", "Gap"), "--div-pos"], [P("One state", "One claimant"), "--rule-soft"], [P("Two states", "Two claimants"), "--s4"], [P("Three or more", "Three or more"), "--s5"]]);
+  setData("c-w-mm", csvM);
+  if (R0.personal.length) {
+    c3.foot.innerHTML = `<p class="note"><b>${P("Personal links", "Personal links")}</b> (${P("dual residence or citizenship, holding kept at home with an exchange", "custodial, placed at residence")}): ` +
+      R0.personal.map(p => `${p.from_code}→${p.to_code} (${p.link_type.replace("_", " ")}, ${pct(p.share)}): ${p.claimants.join(" then ")}`).join("; ") + `</p>`;
+  }
+  // ---- per-jurisdiction table
+  const c4 = card(box, "c-w-table", "Per-jurisdiction equilibrium", "Rate, revenue, residents' gap and overlap shares, share of holdings placed here, unseen share of primary claims.");
+  c4.root.querySelector('[data-x="png"]').hidden = true; c4.root.querySelector('[data-x="svg"]').hidden = true;
+  c4.ctl.innerHTML = `<label>${P("View", "Concept")} <select id="w-con"><option value="a" ${con === "a" ? "selected" : ""}>${CA_LONG()}</option><option value="b" ${con === "b" ? "selected" : ""}>${CB_LONG()}</option></select></label>`;
+  $("w-con").onchange = e => { S.wConcept = e.target.value; render(); };
+  const th = P(["Jurisdiction", "Rate", "Tax collected", "Residents' holdings untaxed", "Taxed twice", "Housed here", "Exchange holdings incorporated here", "Unseen"], ["Jurisdiction", "τ", "Revenue", "Resident gap", "Resident overlap", "Placed (base)", "Seated (custodial)", "Unseen (primary)"]);
+  const trows = [["code", "rate", "revenue", "resident_gap_share", "resident_overlap_share", "placed_here", "incorporated_here", "unseen_share"]];
+  const inc = x.incorporated_here || codes.map(() => 0), itot = inc.reduce((a, b) => a + b, 0) || 1;
+  let t = `<div class="scroll"><table><thead><tr>${th.map((v, i) => `<th class="${i ? "num" : ""}">${v}</th>`).join("")}</tr></thead><tbody>`;
+  const tot = x.placed_here.reduce((a, b) => a + b, 0) || 1;
+  codes.forEach((cd, i) => {
+    const rb = x.resident_base[i] || 1e-12, gs = x.resident_gap[i] / rb, os = x.resident_overlap[i] / rb, us = x.claimed_primary[i] > 1e-12 ? x.unseen_primary[i] / x.claimed_primary[i] : 0;
+    t += `<tr><td><b style="color:${WJC(i)}">${cd}</b> ${names[i]}${R0.fixed[i] ? "" : ` <span class="chip">${P("model rate", "competitive")}</span>`}</td><td class="num">${pct(x.tau[i])}</td><td class="num">${f3(x.revenue[i] * 100)}</td><td class="num">${pct(gs)}</td><td class="num">${pct(os)}</td><td class="num">${pct(x.placed_here[i] / tot)}</td><td class="num">${pct(inc[i] / itot)}</td><td class="num">${pct(us)}</td></tr>`;
+    trows.push([cd, x.tau[i], x.revenue[i], gs, os, x.placed_here[i] / tot, inc[i] / itot, us]);
+  });
+  c4.host.innerHTML = t + `</tbody></table></div><p class="note">${P(`Overall: ${pct(x.failure.gap)} of holdings untaxed, ${pct(x.failure.overlap)} claimed by two or more states, ${pct(x.exit)} left digital assets. Rates ${x.converged ? "settled" : "<b>did not settle</b>"}. Tax collected is per 100 units of holdings.`, `Gap ${pct(x.failure.gap)} · overlap ${pct(x.failure.overlap)} (3+: ${pct(x.failure.multiple)}) · unobserved ${pct(x.failure.unobserved)} · exit ${pct(x.exit)} · ${x.converged ? `converged in ${x.iterations}` : "not converged"}. Revenue ×100.`)}</p>`;
+  setData("c-w-table", trows);
+  // ---- residence vs placement
+  const c5 = card(box, "c-w-place", "Residence and placement shares", "Share of holders by residence against share of holdings by placement.");
+  const rbt = x.resident_base.reduce((a, b) => a + b, 0) || 1;
+  hBars(c5.host, { cats: codes.map((cd, i) => ({ label: `${cd} ${names[i]}`.slice(0, 22) })), fmt: pct, xLabel: P("Share of the total", "Share"), labelW: 170,
+    series: [{ name: P("Holders living here", "Residence"), color: "--s1", values: x.resident_base.map(v => v / rbt) }, { name: P("Holdings kept here", "Placement"), color: "--s3", values: x.placed_here.map(v => v / tot) }] });
+  legend(c5.host, [[P("Holders living here", "Residence share"), "--s1"], [P("Holdings kept here", "Placement share"), "--s3"]]);
+  setData("c-w-place", [["code", "residence_share", "placement_share"], ...codes.map((cd, i) => [cd, x.resident_base[i] / rbt, x.placed_here[i] / tot])]);
+  // ---- leakage by shocked state
+  const la = R0.concepts.a.leakage;
+  if (la) {
+    const c6 = card(box, "c-w-leak", "Leakage by shocked jurisdiction", "Per-draw transition decomposition after a 2 and 5 point rise in each jurisdiction's rate, concept (a).");
+    stacked(c6.host, { cats: codes.map((cd, i) => ({ label: `${cd} ${names[i]}`.slice(0, 22), missing: "n/a" })), parts: LEAK, rows: codes.map(cd => la[cd] || null), xLabel: P("Share of the holdings lost", "Share of base lost") });
+    legend(c6.host, LEAK.map(([, n, col]) => [n, col]));
+    setData("c-w-leak", [["shocked", ...LEAK.map(z => z[0])], ...codes.filter(cd => la[cd]).map(cd => [cd, ...LEAK.map(z => la[cd][z[0]])])]);
+  }
+  // ---- counterfactual
+  const c7 = card(box, "c-w-cf", "Counterfactual: change one jurisdiction's rule", "Re-solve with one liability predicate changed; compare revenue by jurisdiction and aggregate failure measures.");
+  S.cfCode = S.cfCode && codes.includes(S.cfCode) ? S.cfCode : codes[0];
+  c7.ctl.innerHTML = `<label>${P("Jurisdiction", "Jurisdiction")} <select id="cf-c">${codes.map((cd, i) => `<option value="${cd}" ${cd === S.cfCode ? "selected" : ""}>${cd} ${names[i]}</option>`).join("")}</select></label>
+    <label>${P("New rule", "New predicate")} <select id="cf-r">${Object.keys(WD.rule_labels).flatMap(r => r === "intermediary" ? ["intermediary:seat", "intermediary:base"] : [r]).map(r => `<option value="${r}" ${r === S.cfRule ? "selected" : ""}>${cfLabel(r)}</option>`).join("")}</select></label>
+    <button class="primary" id="cf-run">${P("Run what-if", "Run counterfactual")}</button>`;
+  $("cf-c").onchange = e => { S.cfCode = e.target.value; }; $("cf-r").onchange = e => { S.cfRule = e.target.value; };
+  $("cf-run").onclick = async () => { try { await api("/api/world/counterfactual", { code: S.cfCode, rule: S.cfRule, params: readForm() }); wstart(); } catch (e) { banner(e.message, "warn"); } };
+  if (cf && cf.concepts[con]) {
+    const y = cf.concepts[con];
+    const fmt = v => (v * 100).toFixed(2);
+    hBars(c7.host, { cats: codes.map((cd, i) => ({ label: `${cd} ${names[i]}`.slice(0, 22) })), fmt, xLabel: P("Tax collected per 100 units of holdings", "Revenue ×100"), labelW: 170,
+      series: [{ name: P("As coded", "Baseline"), color: "--s1", values: x.revenue }, { name: P("After the change", "Counterfactual"), color: "--s2", values: y.revenue }] });
+    legend(c7.host, [[P("As coded", "Baseline"), "--s1"], [P(`After ${cf.code} switches to ${cfLabel(cf.rule).toLowerCase()}`, `${cf.code}: ${cf.from_rule} → ${cf.rule}`), "--s2"]]);
+    const d = (a, b) => `${pct(a)} → ${pct(b)}`;
+    c7.foot.innerHTML = `<p>${P(`If <b>${cf.code}</b> switched from ${cfLabel(cf.from_rule).toLowerCase()} to ${cfLabel(cf.rule).toLowerCase()}: untaxed holdings ${d(x.failure.gap, y.failure.gap)}; taxed twice ${d(x.failure.overlap, y.failure.overlap)}; total tax ${fmt(x.revenue_total)} → ${fmt(y.revenue_total)} per 100 units; ${cf.code}'s own tax ${fmt(x.revenue[codes.indexOf(cf.code)])} → ${fmt(y.revenue[codes.indexOf(cf.code)])}.`,
+      `${cf.code}: ${cf.from_rule} → ${cf.rule}. Gap ${d(x.failure.gap, y.failure.gap)}; overlap ${d(x.failure.overlap, y.failure.overlap)}; unobserved ${d(x.failure.unobserved, y.failure.unobserved)}; total revenue ${fmt(x.revenue_total)} → ${fmt(y.revenue_total)}; ${y.converged ? "converged" : "not converged"}.`)}</p>`;
+    setData("c-w-cf", [["code", "baseline_revenue", "counterfactual_revenue"], ...codes.map((cd, i) => [cd, x.revenue[i], y.revenue[i]])]);
+  } else {
+    c7.root.querySelector('[data-x="png"]').hidden = true; c7.root.querySelector('[data-x="svg"]').hidden = true;
+    c7.host.innerHTML = `<p class="note">${P("Choose a jurisdiction and a new rule, then press Run what-if.", "No counterfactual run yet.")}</p>`;
+  }
+}
+
+function cfLabel(r) {
+  if (r.startsWith("intermediary:")) return r.endsWith("base") ? P("Exchange location (where it operates)", "intermediary (base)") : P("Exchange location (where incorporated)", "intermediary (seat)");
+  return P(RULE_PLAIN[r], r);
+}
+function wstart() { if (!wpolling) wpolling = setInterval(wpoll, 600); wpoll(); }
+async function wpoll() {
+  try {
+    const st = await api("/api/world/state");
+    if ($("w-bar")) { $("w-bar").style.width = (st.progress * 100).toFixed(1) + "%"; $("w-label").textContent = st.running ? `${(st.progress * 100).toFixed(0)}% · ${st.label}` : (st.error || "Done."); $("w-run").disabled = st.running; $("w-cancel").disabled = !st.running; }
+    if (!st.running) { clearInterval(wpolling); wpolling = null; if (st.error) banner(st.error, "warn"); await loadWorld(); if (S.tab === "world") render(); }
+  } catch (e) { clearInterval(wpolling); wpolling = null; }
+}
+
+/* ================= reading mode ================= */
+function applyMode() {
+  $("m-plain").setAttribute("aria-pressed", PL()); $("m-tech").setAttribute("aria-pressed", !PL());
+  document.documentElement.dataset.mode = S.mode;
+  $("sweep-label").textContent = P("Robustness reruns (0 to skip; each adds about 30 seconds)", "Sensitivity draws (0 to skip; about 30 seconds each)");
+  $("rail-note").textContent = P("All results come from an invented world of six states. Read them as directions and rankings, not as forecasts for any real country.", "Every output is model-implied on a synthetic world. Read rankings and directions rather than levels.");
+  if (SPEC) { const cur = readForm(); buildForm(cur); }
+  buildTabs(); render();
+}
+function setMode(m) { S.mode = m; saveMode(m); applyMode(); }
+$("m-plain").onclick = () => setMode("plain"); $("m-tech").onclick = () => setMode("tech");
+
+/* ================= parameter form ================= */
+function buildForm(params) {
+  const form = $("form"); form.innerHTML = ""; const groups = {};
+  for (const [name, label, lo, hi, step, grp] of SPEC) {
+    if (!groups[grp]) { const fs = document.createElement("fieldset"); fs.innerHTML = `<legend>${PL() ? (GROUP_NAMES[grp] || grp) : grp}</legend>`; form.appendChild(fs); groups[grp] = fs; }
+    const d = document.createElement("div"); d.className = "prm"; d.dataset.name = name;
+    const pp = PARAM_PLAIN[name], shown = PL() && pp ? pp[0] : label, sym = PL() && pp && /^[^\sA-Za-z]+\s/.test(label) ? `<span class="sym">${label.split(" ")[0]}</span>` : "";
+    d.innerHTML = `<label for="p-${name}">${shown}${sym}${pp ? `<span class="help" tabindex="0" aria-label="${pp[1].replace(/"/g, "&quot;")}">?</span>` : ""}</label><input type="range" id="p-${name}" min="${lo}" max="${hi}" step="${step}" value="${params[name]}"><input type="number" id="n-${name}" aria-label="${label}" min="${lo}" max="${hi}" step="${step}" value="${params[name]}">`;
+    groups[grp].appendChild(d);
+    const hq = d.querySelector(".help"); if (hq) { hover(hq, pp[1]); hq.addEventListener("focus", e => { const r = hq.getBoundingClientRect(); showTip({ clientX: r.right, clientY: r.bottom }, pp[1]); }); hq.addEventListener("blur", () => tip.hidden = true); }
+    const r = d.querySelector("input[type=range]"), n = d.querySelector("input[type=number]");
+    const mark = () => d.classList.toggle("changed", Math.abs(+n.value - DEFAULTS[name]) > 1e-9);
+    r.oninput = () => { n.value = r.value; mark(); }; n.oninput = () => { r.value = n.value; mark(); }; mark();
+  }
+}
+function readForm() { const p = {}; for (const [name] of SPEC) { const n = $("n-" + name); p[name] = n ? +n.value : DEFAULTS[name]; } return p; }
+$("sweep").oninput = e => $("sweep-n").value = e.target.value; $("sweep-n").oninput = e => $("sweep").value = e.target.value;
+$("reset").onclick = () => buildForm(DEFAULTS);
+
+/* ================= server calls ================= */
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.message || j.error || `Request failed (${r.status})`); return j;
+}
+function banner(msg, kind = "bad") { $("banner").innerHTML = msg ? `<div class="banner ${kind}" style="margin-bottom:14px">${msg}</div>` : ""; }
+function statusLine() { $("status").textContent = DATA?.generated ? `Showing run of ${DATA.generated.replace("T", " ")}${DATA.sweep ? ` · ${DATA.sweep.n} sweep draws` : ""}` : "No results"; }
+let polling = null;
+async function poll() {
+  try {
+    const st = await api("/api/state");
+    $("bar").style.width = (st.progress * 100).toFixed(1) + "%";
+    $("prog-label").textContent = st.running ? `${(st.progress * 100).toFixed(0)}% · ${st.label}${st.elapsed ? ` · ${Math.round(st.elapsed)} s` : ""}` : (st.error || "Ready.");
+    $("run").disabled = st.running; $("cancel").disabled = !st.running;
+    if (!st.running) { clearInterval(polling); polling = null; if (!st.error) { DATA = await api("/api/result"); statusLine(); render(); banner(""); } else banner(st.error, "warn"); }
+  } catch (e) { clearInterval(polling); polling = null; banner("The engine is not responding. If you closed its window, start JAF Rule Bench again."); }
+}
+$("run").onclick = async () => { try { await api("/api/run", { params: readForm(), sweep: +$("sweep-n").value }); banner(""); if (!polling) polling = setInterval(poll, 700); poll(); } catch (e) { banner(e.message, "warn"); } };
+$("cancel").onclick = () => api("/api/cancel", {}).catch(() => {});
+$("save").onclick = async () => { try { const r = await api("/api/save", {}); banner(`Saved to <span class="mono">${r.folder}</span>`, "warn"); } catch (e) { banner(e.message, "warn"); } };
+$("quit").onclick = async () => { try { await api("/api/quit", {}); } catch (e) {} banner("The engine has stopped. You can close this tab.", "warn"); $("run").disabled = true; };
+
+(async function init() {
+  try {
+    const d = await api("/api/defaults"); SPEC = d.spec; DEFAULTS = d.params; $("ver").textContent = `version ${d.version}`;
+    DATA = await api("/api/result"); if (!DATA.rules) DATA = null;
+    buildForm(DATA ? { ...DEFAULTS, ...DATA.params } : DEFAULTS); statusLine(); applyMode();
+    const st = await api("/api/state"); if (st.running) polling = setInterval(poll, 700);
+  } catch (e) { banner("Could not reach the engine. Start JAF Rule Bench again."); buildTabs(); }
+})();
+</script>
+</body>
+</html>

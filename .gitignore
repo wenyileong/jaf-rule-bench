@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+build/
+dist/
+*.spec
+results*.json
+last_result.json
+world.json
+world_result.json
+.DS_Store
+Thumbs.db

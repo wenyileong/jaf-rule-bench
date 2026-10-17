@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the archived release you used, with its DOI."
+title: "JAF Rule Bench"
+type: software
+version: "0.4.0"
+date-released: "2026-10-16"
+authors:
+  - family-names: "LEONG"
+    given-names: "Wen Yi"
+    orcid: "https://orcid.org/0009-0005-5691-1270"
+abstract: "A research tool modelling how the rule for assigning digital-asset holdings to taxing jurisdictions affects sustainable tax rates, gaps and double taxation, with a coded-world mode for real jurisdictions."
+keywords:
+  - tax law
+  - digital assets
+  - jurisdiction
+  - international taxation
+  - assignment rules
+# doi: "10.5281/zenodo.XXXXXXX"   (add the DOI reserved on Zenodo for this version)
+# license:                          (to be decided; until then, all rights are reserved)
