@@ -9,6 +9,8 @@ pip install pyinstaller
 pyinstaller --noconfirm --onefile --console --name JAF_Rule_Bench ^
   --add-data "app/ui.html;app" --add-data "app/default_result.json;app" --add-data "app/default_world_result.json;app" ^
   --hidden-import jaf.report --hidden-import jaf.experiments --hidden-import jaf.world_report --hidden-import jaf.template ^
+  --hidden-import jaf.design --hidden-import jaf.measure --hidden-import jaf.estimate --hidden-import jaf.recovery ^
+  --hidden-import jaf.prereg --hidden-import jaf.examples ^
   --hidden-import openpyxl --exclude-module tkinter --exclude-module matplotlib --exclude-module scipy main.py
 ```
 

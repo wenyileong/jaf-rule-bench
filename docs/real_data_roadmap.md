@@ -2,6 +2,8 @@
 
 *Advice note, 10 October 2026. Relates to the paper* Jurisdictional Assignment Functions *(SSRN 7351160) and JAF Rule Bench version 0.2 (preview). Companion to* jaf_tool_github_release_advice.md.
 
+> **Update for version 1.0 (18 October 2026).** The coding template (0.3 and 0.4) and the estimation, identification, validation, recovery and pre-registration tools (1.0) described as future steps below now exist; see `docs/USER_GUIDE.md`, section 6, and `docs/build_plan.md`, section 14. What remains is the empirical work itself: coding and verifying the real sample, collecting the data, and pre-registering before data access.
+
 ## Part A. Using real-world data
 
 ### A1. Where the tool stands

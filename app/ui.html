@@ -93,6 +93,10 @@ td.num, th.num { text-align: right; font-family: var(--font-data); font-variant-
 .chip.warn { background: var(--warn-bg); color: var(--warn-ink); border-color: transparent; }
 .chip.bad { background: var(--bad-bg); color: var(--bad-ink); border-color: transparent; }
 .chip.accent { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.chip.ok { background: color-mix(in srgb, var(--s3) 18%, var(--panel)); color: var(--ok-ink); border-color: transparent; }
+input.mini { width: 74px; font-family: var(--font-data); font-size: 0.8rem; padding: 3px 5px; border: 1px solid var(--rule); border-radius: 4px; background: var(--panel); color: var(--ink); }
+input[type=text] { font: inherit; font-size: 0.85rem; padding: 4px 6px; border: 1px solid var(--rule); border-radius: 4px; background: var(--panel); color: var(--ink); }
+.tab h4 { margin: 10px 0 4px; font-size: 0.9rem; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 0.8rem; color: var(--ink-2); }
 .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
 svg { display: block; width: 100%; height: auto; overflow: visible; }
@@ -193,7 +197,7 @@ const TAB_NAMES = {
   overview: ["Overview", "Overview"], guide: ["Guide and glossary", "Glossary"], rates: ["Tax each rule sustains", "Rates"],
   networks: ["Cross-border picture", "Networks"], leakage: ["Where the base goes", "Leakage"], gap: ["Untaxed or double-taxed?", "Gap and overlap"],
   observation: ["What authorities can see", "Observation"], prop1: ["Why rules differ", "Proposition 1"], sensitivity: ["How robust?", "Sensitivity"],
-  explorer: ["Chart builder", "Chart builder"], register: ["Findings register", "Register"],
+  explorer: ["Chart builder", "Chart builder"], register: ["Findings register", "Register"], calib: ["Test against data", "Estimation"],
 };
 
 const GROUP_NAMES = {
@@ -226,6 +230,31 @@ const PARAM_PLAIN = {
 
 /* per-card explanations. what / read / means are plain English; title is the plain-mode title. */
 const EX = {
+  "c-e-design": { title: "Versions of the law and the facts observed",
+    what: "The episodes are the versions of the law being compared: the law as coded (baseline) and each change, such as a reform or a wave of countries starting to exchange information. The facts are what was observed under each version, with how precise each figure is.",
+    read: "A fact can be a level (for example, the share of residents’ trading done on home exchanges in the baseline) or a change between two versions (the same share after the reform, divided by its level before). ‘Used to fit’ facts set the model’s settings; ‘kept back to test’ facts are predicted afterwards to see whether the model gets them right.",
+    means: "This is the empirical design. Fix it, and freeze it, before looking at the data, so that the test cannot be tuned to the answer." },
+  "c-e-spec": { title: "Which settings to estimate",
+    what: "The model has a few behavioural settings, such as how strongly holders react to tax rates and how easily they use a foreign exchange. Here you choose which are estimated from the facts and which are fixed by judgement.",
+    read: "Tick ‘Estimate it?’ for a setting to be found from the facts, within the lowest and highest values allowed. For a fixed setting, a plausible range widens the margin around predictions, so that doubt about it is not hidden.",
+    means: "Estimate only what the facts can pin down. The next card tells you whether they can." },
+  "c-e-ident": { title: "Can the facts pin the settings down?",
+    what: "For each setting to be estimated, how precisely the chosen facts could determine it, given their margins of error. The grid below shows how strongly each fact responds to each setting.",
+    read: "Shorter bars are better: under 10% of the allowed range counts as pinned down. If two settings push the facts in the same way, neither can be separated from the other; the tool names such pairs. Estimation will not run if a setting cannot be pinned down, unless you override it.",
+    means: "This answers, before any estimation, whether the planned data can answer the question. If not, fix a setting by judgement or add facts that respond to it." },
+  "c-e-fit": { title: "Estimated settings and how well they fit",
+    what: "The values of the settings that best reproduce the facts used to fit, with how far off each could be, and how far the model then is from each fact.",
+    read: "In the chart, each dot is one fact. Its distance from the centre line is the gap between model and data, measured in margins of error; dots in the shaded band are within the margin. ‘Range consistent with the data’ is the span of values that fit about as well.",
+    means: "A good fit is necessary but not sufficient: a model can fit the facts it was tuned to and still predict badly. The next card tests that." },
+  "c-e-valid": { title: "Predictions for facts the model was not shown",
+    what: "With the estimated settings, the model predicts the facts that were kept back. Each prediction has a band reflecting the remaining doubt about the settings, including those fixed by judgement.",
+    read: "A prediction is consistent with the data when the observed value lies within the combined margin of error (the dot falls in the shaded band). Several inconsistent predictions are evidence against the model, or against how the law was coded.",
+    means: "This is the test of the model. In a later empirical piece, these predictions, frozen in advance, are what would support or count against the paper’s account." },
+  "c-e-rec": { title: "Proving the method on known settings",
+    what: "The tool invents data from settings it knows, using the same facts and margins of error as your design, then estimates the settings without being told them.",
+    read: "The black line is the true setting. The orange diamond is what the method finds from perfect data; it should sit on the line. The blue dots are what it finds from data with realistic error, with their 95% ranges; most ranges should cross the line.",
+    means: "Passing shows the method works for this design before any real data are used. It does not show that the model describes reality." },
+
   "c-table": { title: "The seven rules at a glance",
     what: "For each candidate rule for deciding which state may tax a digital-asset holding, the table shows the tax it sustains and how often it fails (leaves holdings untaxed, taxes them twice, or cannot see them).",
     read: "Effective rate: of every 100 units of holdings a rule lets a state tax, how many units of tax are collected. Yield: of every 100 units of holdings still in digital assets, how much tax anyone collects, counting holdings nobody may tax. Gap: holdings no state may tax. Overlap: holdings two states claim. Unobserved: holdings a state may tax but cannot see. Exit: holders who leave digital assets.",
@@ -449,15 +478,15 @@ function scatter(host, { pts, xLabel, yLabel, groups }) {
 function seqColor(v, lo, hi) { const st = ["--seq-1", "--seq-2", "--seq-3", "--seq-4", "--seq-5", "--seq-6"]; const k = Math.max(0, Math.min(5, Math.round(((v - lo) / Math.max(1e-9, hi - lo)) * 5))); return `var(${st[k]})`; }
 
 /* ================= views ================= */
-const TABS = ["overview", "world", "rates", "networks", "leakage", "gap", "observation", "prop1", "sensitivity", "explorer", "register", "guide"];
+const TABS = ["overview", "world", "calib", "rates", "networks", "leakage", "gap", "observation", "prop1", "sensitivity", "explorer", "register", "guide"];
 function buildTabs() {
   const nav = $("tabs"); nav.innerHTML = "";
   for (const k of TABS) { const b = document.createElement("button"); b.role = "tab"; b.textContent = TAB_NAMES[k][PL() ? 0 : 1]; b.setAttribute("aria-selected", k === S.tab); b.onclick = () => { S.tab = k; buildTabs(); render(); }; nav.appendChild(b); }
 }
 function render() {
-  const v = $("views"); v.innerHTML = ""; if (!["guide", "world"].includes(S.tab) && (!DATA || !DATA.rules)) { v.innerHTML = `<p class="note">No results yet. Choose parameters and run the model.</p>`; return; }
+  const v = $("views"); v.innerHTML = ""; if (!["guide", "world", "calib"].includes(S.tab) && (!DATA || !DATA.rules)) { v.innerHTML = `<p class="note">No results yet. Choose parameters and run the model.</p>`; return; }
   const box = document.createElement("div"); box.className = "tab"; v.appendChild(box);
-  ({ overview, world: worldTab, rates, networks, leakage, gap, observation, prop1, sensitivity, explorer, register, guide })[S.tab](box);
+  ({ overview, world: worldTab, calib: calibTab, rates, networks, leakage, gap, observation, prop1, sensitivity, explorer, register, guide })[S.tab](box);
 }
 const ruleList = () => RULE_ORDER.filter(r => DATA.rules[r]);
 
@@ -782,11 +811,20 @@ Object.assign(EX, {
     means: "This is the policy question the paper's framework is built to answer: the effect of one state's choice of connecting factor on everyone else." },
 });
 TAB_NAMES.world = ["Real-world sample", "Coded world"];
+GLOSS.push(["Testing against data", [
+  ["Episode", "A version of the law being compared: the law as coded (baseline), or the same law with stated changes, such as a reform or a wave of states starting to exchange information.", "World variant with listed field changes; each solved separately at common parameters.", "--s1"],
+  ["Target and holdout", "Facts used to fit the model are targets. Facts kept back and predicted afterwards, to test the model, are holdouts.", "Moments in the estimation criterion versus out-of-sample validation moments.", "--s2"],
+  ["Margin of error (standard error)", "How far an observed figure could be off. The fit trusts precise figures more; a figure given with too small a margin dominates the result.", "sd_o; weights 1/sd² in J(θ).", "--s3"],
+  ["Pinned down (identified)", "A setting is pinned down when the chosen facts move clearly and distinctively as it changes, so only a narrow range of values fits. Two settings that move the facts in the same way cannot be told apart.", "Local identification from the scaled Jacobian: rank, conditioning, relative s.e. below 0.10 of range.", "--s4"],
+  ["Recovery test", "A check that the method works: the tool invents data from settings it knows and must find them again.", "Known-truth Monte Carlo: noiseless and noisy blind re-estimation.", "--s5"],
+  ["Pre-registration", "Recording, before looking at the data, exactly what will be measured and estimated and what would count as support or refutation, so the test cannot be tuned to the answer.", "SHA-256-fingerprinted design without values; deposit externally to fix the date.", "--s6"],
+  ["Wash trading", "Trades an exchange or its users make with themselves to inflate reported volume. Exchange volume figures are adjusted for it before comparison with the model.", "Reported volume = holdings × turnover / (1 − wash share).", "--s1"],
+]]);
 GLOSS.push(["Coded world (real-world sample) terms", [
   ["Liability rule", "The connecting factor a state uses to claim the right to tax a holding: where the holder lives, where the exchange is, where the key is controlled, and so on.", "Assignment predicate per jurisdiction (mixed regime).", "--s1"],
   ["Collection", "Who collects the tax. If domestic exchanges withhold it, the authority sees holdings at those exchanges fully.", "Domestic withholding sets custodial visibility at home to 1.", "--s2"],
   ["Visibility and exchange of information", "What a tax authority can see. Holdings at foreign exchanges become visible only if both states exchange information automatically (as under CARF or DAC8) by the scenario year.", "Observability V[k, p] by claimant and placement; exchanged information at a set quality.", "--s3"],
-  ["Co-location", "The model assumes a holding is kept in one place, and the exchange seat, registration, infrastructure and key control all follow it. It cannot yet separate an exchange's legal seat from where it operates.", "Single placement p per option; all location-based predicates evaluated at p.", "--s4"],
+  ["Co-location", "The model assumes a holding is kept in one place, and its infrastructure and key control follow it. The one exception: an exchange may operate in one state and be incorporated in another, and registration (and an intermediary test based on incorporation) follows the place of incorporation.", "One base b per option; seat s may differ for custodial options; base-located predicates at b, seat-located at s.", "--s4"],
   ["Order of relief", "Where several states claim, the state where the exchange operates (or the holding is kept) taxes first, then the state where the exchange is incorporated, then the residence state, then a citizenship state; the later ones give relief.", "Primary = base claimant; secondaries ordered seat, cosigner, residence, citizenship; relief ρ[relieving, primary].", "--s5"],
   ["Where an exchange operates and where it is incorporated", "An exchange can be run from one country (its operational base) and incorporated or licensed in another (its legal seat). Registration follows the seat; servers, key control and validation follow the base. A state taxing by 'location of the intermediary' uses its own test: incorporation or operations.", "Exchange-held options (j, base b, seat s); intermediary claim by s if test = seat, by b if test = base.", "--s1"],
   ["Treaty relief by pair", "Relief from double tax depends on the pair of states, and runs one way: the state giving relief (usually the residence state) relieves tax charged first by the other. Pairs not coded use a default.", "Directional matrix ρ[q, p]; per-entry relief for each secondary against the primary.", "--s3"],
@@ -812,9 +850,10 @@ function worldTab(box) {
   $("w-up").onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
     const r = await fetch("/api/world/load", { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: await f.arrayBuffer() });
-    const j = await r.json(); S.wUploadIssues = j.ok ? null : j.issues; await loadWorld(); render();
+    const j = await r.json(); S.wUploadIssues = j.ok ? null : j.issues; ED = null; await loadWorld(); render();
+    if (j.ok) banner(j.design ? P("Loaded, with an empirical design: see the <b>Test against data</b> tab.", "Loaded world and design.") : P("Loaded. The workbook has no data for testing the model (optional).", "Loaded world (no design)."), "warn");
   };
-  $("w-ill").onclick = async () => { await api("/api/world/illustrative", {}); S.wUploadIssues = null; await loadWorld(); render(); };
+  $("w-ill").onclick = async () => { await api("/api/world/illustrative", {}); S.wUploadIssues = null; ED = null; await loadWorld(); render(); };
   if (S.wUploadIssues) {
     const errs = S.wUploadIssues.filter(i => i.level === "error");
     wbanner(c.foot, `<b>${P("The template could not be loaded.", "Template rejected.")}</b> ${errs.length} ${errs.length === 1 ? "problem" : "problems"} to fix (first 12 shown):<ul>${errs.slice(0, 12).map(i => `<li>${i.where}: ${i.message}</li>`).join("")}</ul>`, "bad");
@@ -970,6 +1009,219 @@ async function wpoll() {
     if ($("w-bar")) { $("w-bar").style.width = (st.progress * 100).toFixed(1) + "%"; $("w-label").textContent = st.running ? `${(st.progress * 100).toFixed(0)}% · ${st.label}` : (st.error || "Done."); $("w-run").disabled = st.running; $("w-cancel").disabled = !st.running; }
     if (!st.running) { clearInterval(wpolling); wpolling = null; if (st.error) banner(st.error, "warn"); await loadWorld(); if (S.tab === "world") render(); }
   } catch (e) { clearInterval(wpolling); wpolling = null; }
+}
+
+/* ================= test against data (build plan s 14) ================= */
+let ED = null, epolling = null;
+async function loadEst() { try { ED = await api("/api/est/data"); } catch (e) { ED = null; } }
+const ROLE_CHIP = r => r === "target" ? `<span class="chip accent">${P("used to fit", "target")}</span>` : `<span class="chip warn">${P("kept back to test", "holdout")}</span>`;
+const STATUS_CHIP = { identified: ["chip ok", "identified", "identified"], weak: ["chip warn", "weakly pinned down", "weak"], "not identified": ["chip bad", "not pinned down", "not identified"], "no effect": ["chip bad", "no effect on the data", "no effect"] };
+const stChip = s => { const c = STATUS_CHIP[s] || ["chip", s, s]; return `<span class="${c[0]}">${P(c[1], c[2])}</span>`; };
+const qLabel = q => ED?.quantities?.[q] ? P(ED.quantities[q].plain, q) : q;
+const pLabel = n => ED?.est_params?.[n] ? P(ED.est_params[n].plain, ED.est_params[n].tech) : n;
+const g4 = x => x == null || !isFinite(x) ? "n/a" : (Math.abs(x) >= 100 ? x.toFixed(1) : Math.abs(x) >= 1 ? x.toFixed(3) : x.toFixed(4));
+function obsShort(o) { return `${o.id} · ${o.code || P("world", "world")} · ${o.episode}${o.compared_with ? (o.comparison === "difference" ? " − " : " / ") + o.compared_with : ""}`; }
+function obsLabel(o) { return `${o.id}: ${qLabel(o.quantity)}${o.code ? ` (${o.code})` : ""}, ${o.episode}${o.compared_with ? ` ${o.comparison === "difference" ? P("minus", "−") : P("relative to", "/")} ${o.compared_with}` : ""}`; }
+
+function readSpec() {
+  const rows = [...document.querySelectorAll("#e-spec tbody tr")].map(tr => {
+    const g = k => tr.querySelector(`[data-k="${k}"]`); const v = k => g(k) && g(k).value !== "" ? +g(k).value : null;
+    return { name: tr.dataset.name, free: g("free").checked, value: v("value"), lower: v("lower"), upper: v("upper"), judgement_low: v("judgement_low"), judgement_high: v("judgement_high"), notes: tr.dataset.notes || "" };
+  });
+  return { params: rows, concept: $("e-concept")?.value || "a", starts: +($("e-starts")?.value || 2) };
+}
+
+function zChart(host, rows, { label = r => r.id, band = 1.96 } = {}) {
+  const W = 720, rowH = 26, m = { l: 260, r: 30, t: 10, b: 36 }, H = m.t + m.b + rowH * rows.length;
+  const s = svgRoot(host, W, H, "Standardised distance between model and data");
+  const zmax = Math.max(3, Math.ceil(Math.max(...rows.map(r => Math.abs(r.z || 0)))));
+  const X = z => m.l + (z + zmax) / (2 * zmax) * (W - m.l - m.r);
+  el("rect", { x: X(-band), y: m.t, width: X(band) - X(-band), height: H - m.t - m.b, fill: "var(--accent-soft)" }, s);
+  for (let z = -zmax; z <= zmax; z++) { el("line", { x1: X(z), x2: X(z), y1: m.t, y2: H - m.b, class: "grid" }, s); txt(s, X(z), H - m.b + 15, String(z), { class: "tick", "text-anchor": "middle" }); }
+  el("line", { x1: X(0), x2: X(0), y1: m.t, y2: H - m.b, stroke: "var(--ink-2)", "stroke-width": 1.2 }, s);
+  txt(s, (W + m.l) / 2, H - 4, P("How far the model is from the data, in standard errors (shaded: within the error)", "z = (model − observed) / combined s.e.; shaded |z| ≤ 1.96"), { "text-anchor": "middle", class: "tick" });
+  rows.forEach((r, i) => {
+    const y = m.t + rowH * i + rowH / 2, z = Math.max(-zmax, Math.min(zmax, r.z));
+    txt(s, m.l - 8, y + 4, label(r).slice(0, 34), { class: "lab", "text-anchor": "end" });
+    const ok = Math.abs(r.z) <= band;
+    el("line", { x1: X(0), x2: X(z), y1: y, y2: y, stroke: ok ? "var(--s3)" : "var(--s2)", "stroke-width": 3 }, s);
+    const c = el("circle", { cx: X(z), cy: y, r: 6, fill: ok ? "var(--s3)" : "var(--s2)", stroke: "var(--panel)", "stroke-width": 1.5 }, s);
+    hover(c, r.tip || `${r.id}: z = ${f2(r.z)}`);
+  });
+}
+
+function calibTab(box) {
+  if (!ED) { box.innerHTML = `<p class="note">Loading…</p>`; loadEst().then(render); return; }
+  const d = ED.design, R = ED.results || {};
+  const intro = document.createElement("div"); intro.className = "start";
+  intro.innerHTML = `<h3>${P("Testing the model against data", "Estimation and validation")}</h3><p>${P(
+    "This tab confronts the model with observed facts. You describe versions of the law to compare (for example before and after a reform, or successive waves of information exchange), the facts observed under each, and how precise each fact is. The tool then (1) checks whether those facts can pin down the model’s behavioural settings at all, (2) finds the settings that best reproduce the facts, and (3) predicts facts it was not shown, to test the model. Before using real data, it can prove the method works on data it generated itself.",
+    "Simulated minimum distance on model-implied measured quantities across episodes, weighted by inverse measurement variance; local identification diagnostics; delta-method uncertainty from stated measurement error; out-of-sample validation on holdout observations; known-truth recovery; fingerprinted pre-registration.")}</p>
+    <p class="note">${P("Results here are only as good as the coded law and the data. The tool estimates and tests; it does not certify that any real-world figure is right.", "Instrument only: v1 ships no real-world results (build plan s 14.1).")}</p>`;
+  box.appendChild(intro);
+  if (!ED.has_world || !d) {
+    const c = card(box, "c-e-none", P("No data loaded", "No design"), ""); c.root.querySelector(".tools").hidden = true;
+    c.host.innerHTML = `<p>${P("Load a world on the <b>Real-world sample</b> tab. To test against data, the workbook needs the Episodes, Data and Estimation sheets (present in every template from version 1.0). The invented example comes with synthetic data so you can try the workflow.", "Load a workbook with design sheets on the coded-world tab, or the illustrative world (synthetic design).")}</p><button class="primary" id="e-ill">${P("Use the invented example with synthetic data", "Load illustrative world and design")}</button>`;
+    $("e-ill").onclick = async () => { await api("/api/world/illustrative", {}); WD = null; await loadEst(); render(); };
+    return;
+  }
+  if (d.synthetic) wbanner(box, P("<b>Synthetic data.</b> The values below were generated by the tool from known settings, with random error added, with every setting in the left-hand panel at its default. They are not observations of anything; they show how the workflow behaves.", "<b>Synthetic design:</b> values generated at known parameters (rail at defaults) plus noise."));
+  // ---- design: episodes and observations
+  const c1 = card(box, "c-e-design", "Episodes and observations", "Episodes are versions of the coded world; observations are measured quantities under an episode, as levels or as ratios or differences between episodes.");
+  c1.root.querySelector('[data-x="png"]').hidden = true; c1.root.querySelector('[data-x="svg"]').hidden = true;
+  let h = `<h4>${P("Versions of the law compared", "Episodes")}</h4><div class="scroll"><table><thead><tr><th>${P("Episode", "Episode")}</th><th>${P("What changes", "Changes")}</th></tr></thead><tbody><tr><td><b>baseline</b></td><td class="note">${P("The coded world as loaded", "Coded world")}</td></tr>`;
+  for (const e of d.episodes) h += `<tr><td><b>${e.name}</b></td><td>${e.description ? e.description + "<br>" : ""}<span class="note mono">${e.changes.map(c => `${c.target}.${c.field} = ${c.value}`).join("; ")}</span></td></tr>`;
+  h += `</tbody></table></div><h4>${P("Facts observed", "Observations")}</h4><div class="scroll"><table><thead><tr><th>ID</th><th>${P("Use", "Role")}</th><th>${P("What is measured", "Quantity")}</th><th>${P("Where", "Code")}</th><th>${P("When", "Episode")}</th><th>${P("Compared with", "Relative to")}</th><th class="num">${P("Value", "y")}</th><th class="num">${P("Margin of error", "s.e.")}</th><th>${P("Source", "Source")}</th></tr></thead><tbody>`;
+  const orows = [["id", "role", "quantity", "code", "episode", "compared_with", "comparison", "value", "sd", "source", "verified"]];
+  for (const o of d.observations) {
+    h += `<tr><td><b>${o.id}</b></td><td>${ROLE_CHIP(o.role)}</td><td>${qLabel(o.quantity)}</td><td>${o.code || "—"}</td><td>${o.episode}</td><td>${o.compared_with ? `${o.compared_with} (${o.comparison})` : ""}</td><td class="num">${o.value == null ? `<span class="chip">${P("not yet", "blank")}</span>` : g4(o.value)}</td><td class="num">${g4(o.sd)}</td><td class="note" style="max-width:260px">${o.source || "<i>none</i>"}${o.verified ? "" : ` <span class="chip bad">${P("unchecked", "unverified")}</span>`}</td></tr>`;
+    orows.push([o.id, o.role, o.quantity, o.code, o.episode, o.compared_with, o.comparison, o.value, o.sd, o.source, o.verified]);
+  }
+  c1.host.innerHTML = h + "</tbody></table></div>" + (d.measurement.length ? `<p class="note">${P("Exchange data adjusted for wash trading:", "Measurement:")} ${d.measurement.map(m => `${m.code} ${pct(m.wash_share)}${m.turnover !== 1 ? `, turnover ×${m.turnover}` : ""}`).join("; ")}</p>` : "");
+  setData("c-e-design", orows);
+  // ---- settings
+  const c2 = card(box, "c-e-spec", "What to estimate", "Free parameters are estimated within their bounds from the targets; fixed parameters keep their value, and a judgement range widens prediction bands in validation.");
+  c2.root.querySelector(".tools").hidden = true;
+  const spec = Object.fromEntries((d.params || []).map(p => [p.name, p]));
+  const cur = { ...(DEFAULTS || {}), ...(ED.world_settings || {}) };
+  let t = `<div class="scroll"><table id="e-spec"><thead><tr><th>${P("Setting", "Parameter")}</th><th>${P("Estimate it?", "Free")}</th><th class="num">${P("Start or fixed value", "Start / fixed")}</th><th class="num">${P("Lowest allowed", "Lower")}</th><th class="num">${P("Highest allowed", "Upper")}</th><th class="num">${P("Plausible range if fixed", "Judgement range")}</th></tr></thead><tbody>`;
+  for (const [n, meta] of Object.entries(ED.est_params)) {
+    const p = spec[n] || { name: n, free: false };
+    const inp = (k, v, ph) => `<input class="mini" type="number" step="any" data-k="${k}" value="${v ?? ""}" placeholder="${ph ?? ""}">`;
+    t += `<tr data-name="${n}" data-notes="${(p.notes || "").replace(/"/g, "&quot;")}"><td>${pLabel(n)}${p.notes ? `<div class="note">${p.notes}</div>` : ""}</td><td><input type="checkbox" data-k="free" ${p.free ? "checked" : ""} aria-label="Estimate ${n}"></td>
+      <td class="num">${inp("value", p.value, cur[n] != null ? g4(cur[n]) : "")}</td><td class="num">${inp("lower", p.lower, meta.lo)}</td><td class="num">${inp("upper", p.upper, meta.hi)}</td><td class="num">${inp("judgement_low", p.judgement_low, "")} ${P("to", "–")} ${inp("judgement_high", p.judgement_high, "")}</td></tr>`;
+  }
+  t += `</tbody></table></div>`;
+  c2.host.innerHTML = t + `<p class="note">${P("Blank values use the setting in the left-hand panel (or the world’s settings for the two ease-of-moving settings). Keep the number of estimated settings small: each must be pinned down by the facts used to fit.", "Blank start/fixed values take the rail (or world settings for mobility).")}</p>`;
+  c2.ctl.innerHTML = `<label>${P("View used", "Concept")} <select id="e-concept"><option value="a" ${d.concept === "a" ? "selected" : ""}>${CA_LONG()}</option><option value="b" ${d.concept === "b" ? "selected" : ""}>${CB_LONG()}</option></select></label>
+    <label>${P("Search starts", "Starts")} <input class="mini" id="e-starts" type="number" min="1" max="20" value="${d.starts}"></label>`;
+  // ---- run box
+  const rb = document.createElement("div"); rb.className = "runbox";
+  rb.innerHTML = `<div class="eyebrow">${P("Run", "Tasks")}</div>
+    <div class="runrow"><button id="e-ident">${P("1. Check the facts can pin the settings down", "Identification")}</button>
+      <button id="e-rec">${P("2. Prove the method on known settings", "Recovery test")}</button> <label class="note">${P("noisy repeats", "reps")} <input class="mini" id="e-reps" type="number" min="0" max="20" value="3"></label>
+      <button class="primary" id="e-est">${P("3. Estimate and test predictions", "Estimate + validate")}</button>
+      <button id="e-cancel" disabled>Cancel</button><button id="e-save" ${Object.keys(R).length ? "" : "disabled"}>${P("Save to Documents", "Save")}</button></div>
+    <div class="prog"><i id="e-bar"></i></div><div class="note" id="e-label">${S.eMsg || P("Estimation takes from about a minute to several minutes; the recovery test repeats it.", "Each estimate re-solves every episode many times.")}</div>`;
+  box.appendChild(rb);
+  const params = () => readForm();
+  const go = async (kind, extra = {}) => { try { await api("/api/est/run", { kind, params: params(), spec: readSpec(), ...extra }); estart(); } catch (e) { banner(e.message, "warn"); } };
+  $("e-ident").onclick = () => go("identify");
+  $("e-est").onclick = () => go("estimate");
+  $("e-rec").onclick = () => { const truth = {}; document.querySelectorAll("#e-truth input").forEach(i => { if (i.value !== "") truth[i.dataset.name] = +i.value; }); go("recovery", { reps: +$("e-reps").value, truth: Object.keys(truth).length ? truth : null }); };
+  $("e-cancel").onclick = () => api("/api/est/cancel", {}).catch(() => {});
+  $("e-save").onclick = async () => { try { const r = await api("/api/est/save", {}); banner(`Saved to <span class="mono">${r.folder}</span>`, "warn"); } catch (e) { banner(e.message, "warn"); } };
+  const freeNames = (d.params || []).filter(p => p.free).map(p => p.name);
+  const tr = document.createElement("details"); tr.className = "tech"; tr.id = "e-truth";
+  tr.innerHTML = `<summary>${P("Settings the recovery test should find (optional)", "Recovery truth (optional)")}</summary><p>${freeNames.map(n => `<label>${pLabel(n)} <input class="mini" type="number" step="any" data-name="${n}" placeholder="auto"></label>`).join(" ") || P("No setting is marked for estimation.", "No free parameters.")}</p>`;
+  rb.appendChild(tr);
+  // ---- identification
+  const id = R.identify;
+  const c3 = card(box, "c-e-ident", "Can the facts pin the settings down?", "Local identification at the starting values: relative standard error per parameter (as a share of its range) implied by the stated measurement errors, rank and conditioning of the scaled Jacobian, and near-flat directions.");
+  if (id && id.params && id.params.length) {
+    const col = s => s === "identified" ? "--s3" : s === "weak" ? "--s4" : "--s2";
+    hBars(c3.host, { cats: id.params.map(p => ({ label: pLabel(p.name).slice(0, 46), extra: stChip(p.status) })), labelW: 340, fmt: v => isFinite(v) ? (v * 100).toFixed(1) + "%" : "∞",
+      xLabel: P("Likely error, as a share of the allowed range (shorter is better)", "s.e. / range"), max: Math.max(0.5, ...id.params.map(p => isFinite(p.rel_se) ? p.rel_se : 0.5)),
+      series: [{ name: P("Likely error", "Relative s.e."), color: "--s1", values: id.params.map(p => isFinite(p.rel_se) ? p.rel_se : null), missing: id.params.map(() => P("cannot be pinned down", "∞")) }] });
+    c3.foot.innerHTML = `<p><b>${P("Verdict", "Status")}:</b> ${id.status === "ok" ? `<span class="chip ok">${P("the facts pin every estimated setting down", "identified")}</span>` : id.status === "weak" ? `<span class="chip warn">${P("some settings only weakly pinned down", "weak")}</span>` : `<span class="chip bad">${P("cannot estimate as set up", "not identified")}</span>`}
+      ${id.params.map(p => `${pLabel(p.name)}: ${stChip(p.status)}`).join(" · ")}</p>${(id.reasons || []).length ? `<ul>${id.reasons.map(r => `<li>${r}</li>`).join("")}</ul>` : ""}
+      <p class="note">${P(`Checked at the starting values, using ${id.n_targets} facts for ${id.n_free} settings. A setting is pinned down when its likely error is under 10% of its allowed range.`, `n = ${id.n_targets}, k = ${id.n_free}, rank ${id.rank}, condition number ${isFinite(id.condition) ? id.condition.toFixed(1) : "∞"}. Thresholds: identified < 0.10, weak < 0.33 of range.`)}${(id.flat_directions || []).length ? ` ${P("Settings that trade off against each other:", "Near-flat directions:")} ${id.flat_directions.map(f => Object.entries(f.direction).map(([k, v]) => `${v > 0 ? "+" : "−"}${Math.abs(v).toFixed(2)} ${k}`).join(" ")).join("; ")}.` : ""}</p>`;
+    setData("c-e-ident", [["parameter", "status", "relative_se", "se"], ...id.params.map(p => [p.name, p.status, p.rel_se, p.se])]);
+    if (id.sensitivity && id.targets) {
+      const vmax = Math.max(1e-9, ...id.sensitivity.flat().map(Math.abs));
+      const oby = Object.fromEntries(d.observations.map(o => [o.id, o]));
+      const cell = v => { const a = Math.round(12 + 78 * Math.min(1, Math.abs(v) / vmax)); return `<td class="num" style="background:color-mix(in srgb, var(${v >= 0 ? "--div-pos" : "--div-neg"}) ${a}%, var(--panel));color:${a > 55 ? "#fff" : "var(--ink)"}" title="${f2(v)}">${f2(v)}</td>`; };
+      const hm = document.createElement("div");
+      hm.innerHTML = `<h4>${P("How strongly each fact responds to each setting", "Scaled sensitivity ∂(m/s.e.)/∂(θ/range)")}</h4><p class="note">${P("Each number is how many margins of error the fact moves when the setting moves across its whole allowed range. Red: the fact rises; blue: it falls. Two settings that move the facts in the same pattern cannot be told apart.", "Columns nearly proportional imply weak separate identification.")}</p>
+        <div class="scroll"><table style="width:auto"><thead><tr><th>${P("Fact", "Target")}</th>${id.free.map(n => `<th class="num">${pLabel(n)}</th>`).join("")}</tr></thead><tbody>${id.targets.map((tid, i) => `<tr><td>${oby[tid] ? obsLabel(oby[tid]) : tid}</td>${id.sensitivity[i].map(cell).join("")}</tr>`).join("")}</tbody></table></div>`;
+      c3.foot.appendChild(hm);
+    }
+  } else c3.host.innerHTML = `<p class="note">${P("Press <b>1. Check the facts can pin the settings down</b>. Estimation runs this check first and will not proceed if a setting cannot be pinned down, unless you override it.", "Not run.")}</p>`;
+  // ---- estimation
+  const es = R.estimate;
+  const c4 = card(box, "c-e-fit", "Estimated settings and fit", "Point estimates with delta-method standard errors from the stated measurement errors (not sampling errors); standardised residuals by target; J statistic against χ² with n − k degrees of freedom.");
+  if (es && es.status === "refused") {
+    c4.root.querySelector(".tools").hidden = true;
+    c4.host.innerHTML = `<div class="banner bad">${es.message}</div><p><button id="e-over">${P("Estimate anyway (results not reliable)", "Override and estimate")}</button></p>`;
+    $("e-over").onclick = () => go("estimate", { override: true });
+  } else if (es && es.status === "ok") {
+    let tt = `<div class="scroll"><table><thead><tr><th>${P("Setting", "Parameter")}</th><th class="num">${P("Estimate", "Estimate")}</th><th class="num">${P("Likely error", "s.e.")}</th><th class="num">${P("Range consistent with the data (95%)", "95% interval")}</th><th class="num">${P("Started from", "Start")}</th></tr></thead><tbody>`;
+    for (const p of es.params) tt += `<tr><td>${pLabel(p.name)}${p.at_bound ? ` <span class="chip bad">${P("at its limit", "at bound")}</span>` : ""}</td><td class="num"><b>${g4(p.estimate)}</b></td><td class="num">${g4(p.se)}</td><td class="num">${g4(p.ci_low)} ${P("to", "–")} ${g4(p.ci_high)}</td><td class="num">${g4(p.start)}</td></tr>`;
+    c4.host.innerHTML = tt + "</tbody></table></div>";
+    const zd = document.createElement("div"); c4.host.appendChild(zd);
+    zChart(zd, es.fit.map(f => ({ ...f, tip: `<b>${f.id}</b>: ${qLabel(f.quantity)}${f.code ? ` (${f.code})` : ""}<br>${P("Observed", "y")} ${g4(f.observed)} ± ${g4(f.sd)}<br>${P("Model", "Model")} ${g4(f.model)}<br>z = ${f2(f.z)}` })), { label: f => obsShort(f) });
+    const pv = es.p_value;
+    c4.foot.innerHTML = `<p>${P(`The model reproduces ${es.fit.filter(f => Math.abs(f.z) <= 1.96).length} of ${es.fit.length} facts within their margins of error.${pv != null ? ` Overall, a misfit this large would arise by chance ${pv >= 0.05 ? "often" : "rarely"} if the model were right (p = ${pv.toFixed(2)}).` : " With as many settings as facts, the overall fit cannot be tested."}`, `J = ${f2(es.J)}, dof = ${es.dof}${pv != null ? `, p = ${pv.toFixed(3)}` : ""}; ${es.runs.length} start(s); ${es.evaluations} equilibrium solves${es.override ? "; <b>identification overridden</b>" : ""}.`)}</p>
+      ${(es.warnings || []).length ? `<ul>${es.warnings.map(w => `<li>${w}</li>`).join("")}</ul>` : ""}${es.synthetic ? `<p class="note">${P("Synthetic data: compare the estimates with the settings used to generate the data (on the illustrative example, 3.4 and 0.55).", "Synthetic: truth θ₀ = 3.4, custodial mobility = 0.55.")}</p>` : ""}`;
+    setData("c-e-fit", [["parameter", "estimate", "se", "ci_low", "ci_high"], ...es.params.map(p => [p.name, p.estimate, p.se, p.ci_low, p.ci_high]), [], ["id", "observed", "model", "sd", "z"], ...es.fit.map(f => [f.id, f.observed, f.model, f.sd, f.z])]);
+  } else { c4.root.querySelector(".tools").hidden = true; c4.host.innerHTML = `<p class="note">${P("Press <b>3. Estimate and test predictions</b>.", "Not run.")}</p>`; }
+  // ---- validation
+  const va = es && es.validation;
+  const c5 = card(box, "c-e-valid", "Predictions for facts the model was not shown", "Holdout predictions with bands combining parameter uncertainty (delta method) and judgement ranges for fixed parameters (one at a time, in quadrature); z against observed values with their standard errors.");
+  if (va && va.status === "ok") {
+    const sc = va.rows.filter(r => r.z != null);
+    if (sc.length) zChart(c5.host, sc.map(r => ({ ...r, tip: `<b>${r.id}</b>: ${qLabel(r.quantity)}${r.code ? ` (${r.code})` : ""}<br>${P("Predicted", "Prediction")} ${g4(r.prediction)} (${P("band", "95%")} ${g4(r.lo)} ${P("to", "–")} ${g4(r.hi)})<br>${P("Observed", "y")} ${g4(r.observed)} ± ${g4(r.sd)}<br>z = ${f2(r.z)}` })), { label: r => obsShort(r) });
+    let vt = `<div class="scroll"><table><thead><tr><th>${P("Fact", "Holdout")}</th><th class="num">${P("Predicted", "Prediction")}</th><th class="num">${P("Band (95%)", "95% band")}</th><th class="num">${P("Observed", "y ± s.e.")}</th><th>${P("Result", "|z| ≤ 1.96")}</th></tr></thead><tbody>`;
+    for (const r of va.rows) vt += `<tr><td>${obsLabel(r)}</td><td class="num">${g4(r.prediction)}</td><td class="num">${g4(r.lo)} ${P("to", "–")} ${g4(r.hi)}</td><td class="num">${r.observed == null ? P("not yet observed", "blank") : `${g4(r.observed)} ± ${g4(r.sd)}`}</td><td>${r.unscorable ? `<span class="chip bad">${P("cannot be scored", "unscorable")}</span>` : r.z == null ? "" : r.passed ? `<span class="chip ok">${P("consistent", "pass")}</span>` : `<span class="chip bad">${P("inconsistent", "fail")}</span>`}</td></tr>`;
+    const vtd = document.createElement("div"); vtd.innerHTML = vt + "</tbody></table></div>"; c5.host.appendChild(vtd);
+    c5.foot.innerHTML = (va.unscorable ? `<div class="banner bad">${P(`${va.unscorable} prediction(s) cannot be scored, because the estimated settings are not determined in every direction.`, `${va.unscorable} holdout(s) unscorable: singular information matrix.`)}</div>` : "") + `<p>${P(`${va.passed} of ${va.n} predictions fall within the combined margin of error.${va.judgement_params.length ? ` Bands include the plausible ranges given for ${va.judgement_params.join(", ")}.` : ""}`, `${va.passed}/${va.n} pass; χ² = ${f2(va.chi2)}${va.p_value != null ? `, p = ${va.p_value.toFixed(3)}` : ""}; judgement parameters: ${va.judgement_params.join(", ") || "none"}.`)}</p>`;
+    setData("c-e-valid", [["id", "prediction", "band_low", "band_high", "observed", "sd", "z", "passed"], ...va.rows.map(r => [r.id, r.prediction, r.lo, r.hi, r.observed, r.sd, r.z, r.passed])]);
+  } else { c5.root.querySelector(".tools").hidden = true; c5.host.innerHTML = `<p class="note">${va && va.status === "none" ? P("The design keeps no facts back for testing. Mark some observations as holdout.", "No holdouts.") : P("Runs automatically after estimation.", "Not run.")}</p>`; }
+  // ---- recovery
+  const rc = R.recovery;
+  const c6 = card(box, "c-e-rec", "Proving the method on known settings", "Known-truth recovery: synthetic observations generated at the stated truth, estimated blind from other starting values; one noiseless run and noisy runs with normal noise of each observation's s.e.");
+  if (rc && rc.status === "ok") {
+    const W = 720, rowH = 54, m = { l: 250, r: 30, t: 14, b: 30 }, H = m.t + m.b + rowH * rc.summary.length;
+    const sv = svgRoot(c6.host, W, H, "Recovery of known settings");
+    rc.summary.forEach((sm, i) => {
+      const X = v => m.l + (v - sm.lower) / (sm.upper - sm.lower) * (W - m.l - m.r), y = m.t + rowH * i + rowH / 2;
+      txt(sv, m.l - 8, y + 4, pLabel(sm.name).slice(0, 34), { class: "lab", "text-anchor": "end" });
+      el("line", { x1: X(sm.lower), x2: X(sm.upper), y1: y, y2: y, class: "grid" }, sv);
+      txt(sv, X(sm.lower), y + 22, g4(sm.lower), { class: "tick", "text-anchor": "start" }); txt(sv, X(sm.upper), y + 22, g4(sm.upper), { class: "tick", "text-anchor": "end" });
+      el("line", { x1: X(sm.truth), x2: X(sm.truth), y1: y - 18, y2: y + 18, stroke: "var(--ink)", "stroke-width": 2 }, sv);
+      rc.runs.slice(1).forEach((r, k) => { const p = r.params[sm.name], yy = y - 10 + (k % 5) * 5;
+        if (isFinite(p.se)) el("line", { x1: X(Math.max(sm.lower, p.estimate - 1.96 * p.se)), x2: X(Math.min(sm.upper, p.estimate + 1.96 * p.se)), y1: yy, y2: yy, stroke: "var(--s1)", "stroke-opacity": 0.5, "stroke-width": 2 }, sv);
+        hover(el("circle", { cx: X(p.estimate), cy: yy, r: 4, fill: "var(--s1)" }, sv), `${P("Noisy run", "Rep")} ${r.rep}: ${g4(p.estimate)} ± ${g4(p.se)}`); });
+      const p0 = rc.runs[0].params[sm.name];
+      hover(el("rect", { x: X(p0.estimate) - 5, y: y + 6, width: 10, height: 10, fill: "var(--s2)", transform: `rotate(45 ${X(p0.estimate)} ${y + 11})` }, sv), `${P("Without noise", "Noiseless")}: ${g4(p0.estimate)}`);
+    });
+    legend(c6.host, [[P("True setting", "Truth"), "--ink"], [P("Found without noise", "Noiseless estimate"), "--s2"], [P("Found with noise (with 95% range)", "Noisy estimates ± 1.96 s.e."), "--s1"]]);
+    c6.foot.innerHTML = `<p><b>${rc.passed ? `<span class="chip ok">${P("passed", "pass")}</span>` : `<span class="chip bad">${P("failed", "fail")}</span>`}</b> ${P(`Without noise the method must find each setting to within 2% of its range; with noise, every estimate must lie within 3.5 likely errors of the truth.`, `Criteria: ${rc.criteria.noiseless}; ${rc.criteria.noisy}.`)}</p>
+      <div class="scroll"><table><thead><tr><th>${P("Setting", "Parameter")}</th><th class="num">${P("True", "Truth")}</th><th class="num">${P("Found (no noise)", "Noiseless")}</th><th class="num">${P("Average found (noise)", "Mean")}</th><th class="num">${P("Typical miss", "RMSE")}</th><th class="num">${P("Reported likely error", "Mean s.e.")}</th><th class="num">${P("Truth inside 95% range", "Coverage")}</th></tr></thead><tbody>
+      ${rc.summary.map(sm => `<tr><td>${pLabel(sm.name)}</td><td class="num">${g4(sm.truth)}</td><td class="num">${g4(sm.noiseless)}</td><td class="num">${g4(sm.mean)}</td><td class="num">${g4(sm.rmse)}</td><td class="num">${g4(sm.mean_se)}</td><td class="num">${sm.coverage == null ? "" : pct(sm.coverage)}</td></tr>`).join("")}</tbody></table></div>
+      <p class="note">${P("Passing shows the estimator can recover the model’s own settings from data of this kind and precision. It does not show that the model describes the real world; that is what the predictions test does with real data.", "Recovery establishes invertibility and honest standard errors under correct specification; it is not evidence of correct specification.")} ${rc.reps < 10 ? P(`With only ${rc.reps} noisy repeats, coverage is a rough check.`, `Coverage on ${rc.reps} reps is indicative only.`) : ""}</p>`;
+    setData("c-e-rec", [["parameter", "truth", "noiseless", "mean", "bias", "rmse", "mean_se", "coverage", "passed"], ...rc.summary.map(sm => [sm.name, sm.truth, sm.noiseless, sm.mean, sm.bias, sm.rmse, sm.mean_se, sm.coverage, sm.passed_noiseless && sm.passed_noisy])]);
+  } else { c6.root.querySelector(".tools").hidden = true; c6.host.innerHTML = `<p class="note">${P("Press <b>2. Prove the method on known settings</b>. Run it before using real data: it uses the design’s facts and margins of error but replaces the values with ones the tool generates from settings it knows.", "Not run.")}</p>`; }
+  // ---- pre-registration
+  const c7 = card(box, "c-e-prereg", "Pre-registration", "SHA-256 fingerprint over the coded-world fingerprint, episodes, observation definitions (not values), measurement, parameter settings, estimation settings and hypotheses.");
+  c7.root.querySelector(".tools").hidden = true;
+  const rec = ED.record, ck = ED.prereg_check;
+  c7.ctl.innerHTML = `<label>${P("Author", "Author")} <input id="e-author" type="text" style="width:180px" value=""></label><label>${P("Title", "Title")} <input id="e-title" type="text" style="width:240px" value="${(d.label || "").replace(/"/g, "&quot;")}"></label>
+    <button class="primary" id="e-freeze">${P("Freeze the design now", "Freeze")}</button>${rec ? `<a href="/api/est/prereg.md" download><button>${P("Download document (.md)", ".md")}</button></a><a href="/api/est/prereg.json" download><button>${P("Download record (.json)", ".json")}</button></a>` : ""}
+    <label class="filebtn"><button type="button" id="e-pr-btn">${P("Load an earlier record", "Load .json")}</button><input type="file" id="e-pr" accept=".json" hidden></label>`;
+  $("e-freeze").onclick = async () => { try { await api("/api/est/freeze", { spec: readSpec(), params: readForm(), author: $("e-author").value, title: $("e-title").value }); await loadEst(); render(); } catch (e) { banner(e.message, "warn"); } };
+  $("e-pr-btn").onclick = () => $("e-pr").click();
+  $("e-pr").onchange = async e => { const f = e.target.files[0]; if (!f) return; const r = await fetch("/api/est/prereg/load", { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: await f.arrayBuffer() }); const j = await r.json(); if (!r.ok) banner(j.error, "warn"); await loadEst(); render(); };
+  let ph = `<p>${P("Freezing records what will be measured, how, and what will be estimated, before you look at the data. Deposit the downloaded document with an independent registry (for example OSF) before collecting values: the deposit, not this tool, establishes the date. Values are never part of the record.", "Freeze before data access; deposit externally to establish timing. Values are excluded from the fingerprint.")}</p>`;
+  if (rec) {
+    ph += `<p><b>${P("Frozen", "Frozen")}</b> ${rec.created.replace("T", " ")} · <span class="mono">${rec.fingerprint.slice(0, 16)}…</span>${rec.values_present_at_freeze.length ? ` · <span class="chip warn">${P(`${rec.values_present_at_freeze.length} values were already present`, `${rec.values_present_at_freeze.length} values present at freeze`)}</span>` : ` · <span class="chip ok">${P("no values present", "no values")}</span>`}</p>`;
+    if (ck) ph += `<p class="note">${P("Checked against the current design and the panel settings last used for a run or a freeze.", "Check uses the last-used rail parameters.")}</p>` + (ck.consistent ? `<p><span class="chip ok">${P("The current design matches the frozen record", "consistent")}</span></p>` : `<div class="banner warn"><b>${P("The current design departs from the frozen record:", "Deviations:")}</b><ul>${ck.deviations.map(x => `<li>${x}</li>`).join("")}</ul>${P("Report each departure and its reason when you publish.", "Disclose each.")}</div>`);
+  }
+  c7.host.innerHTML = ph;
+  // ---- hypotheses
+  if ((d.hypotheses || []).length) {
+    const c8 = card(box, "c-e-hyp", "Hypotheses to be tested", "As stated in the design's Hypotheses sheet.");
+    c8.root.querySelector(".tools").hidden = true;
+    c8.host.innerHTML = `<div class="reg">${d.hypotheses.map(x => `<article><div><b>${x.id}</b> ${x.statement}</div><div class="note">${P("Test", "Test")}: ${x.test || "—"}</div></article>`).join("")}</div>`;
+  }
+}
+function estart() { if (!epolling) epolling = setInterval(epoll, 700); epoll(); }
+async function epoll() {
+  try {
+    const st = await api("/api/est/state");
+    if ($("e-bar")) { $("e-bar").style.width = (st.progress * 100).toFixed(1) + "%"; $("e-label").textContent = st.running ? `${(st.progress * 100).toFixed(0)}% · ${st.label}${st.elapsed ? ` · ${Math.round(st.elapsed)} s` : ""}` : (st.error || "Done."); ["e-ident", "e-est", "e-rec"].forEach(k => $(k).disabled = st.running); $("e-cancel").disabled = !st.running; }
+    if (!st.running) { clearInterval(epolling); epolling = null; S.eMsg = st.error || P(`Done (${st.kind === "identify" ? "identification check" : st.kind === "recovery" ? "recovery test" : "estimation"}).`, `Done: ${st.kind}.`); if (st.error) banner(st.error, "warn"); await loadEst(); if (S.tab === "calib") render(); }
+  } catch (e) { clearInterval(epolling); epolling = null; }
 }
 
 /* ================= reading mode ================= */

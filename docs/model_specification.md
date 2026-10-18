@@ -1,8 +1,200 @@
 # Model Specification: *Jurisdictional Assignment Functions* (SSRN 7351160)
 
-Computational specification for the tax research tool, version 0.2 (9 October 2026; citations in section 2 verified).
+Computational specification for JAF Rule Bench, version 1.0 (18 October 2026).
 
-This document records how each open point in the paper's model is resolved for implementation. Every resolution was tested numerically on synthetic data before being adopted. Where a test exposed a flaw in the first proposal, the proposal was revised and the revision retested; the record of what failed is kept, because it bears on what the paper can claim.
+The document has two parts. **Part B** specifies the model as implemented in version 1.0: every quantity the tool computes, the measurement model that links them to data, and the estimation, identification, validation, recovery and pre-registration methods. **Part A** is the record from version 0.2 of how each open point in the paper's model was resolved, with the tests that failed along the way. Part A is kept because it bears on what the paper can claim. Where the two differ (for example the default value of β), Part B governs.
+
+Notation: jurisdictions i, k, n ∈ {1, …, N}; holder residence j; configuration c ∈ {custodial, single, multisig}; base b (where a holding is housed, or where an exchange operates); seat s (where an exchange is incorporated or licensed). softplus(x; κ) = ln(1 + e^{κx})/κ, a smooth approximation to max(0, x).
+
+---
+
+# Part B. The model as implemented in version 1.0
+
+## B1. Two kinds of world
+
+1. **Synthetic world (single rule).** N = 6 jurisdictions with sizes, exchange presence, registration geography and validation geography drawn from a seeded generator. Every jurisdiction applies the same assignment rule. This is the paper's comparison of rules (tabs other than the coded-world and estimation tabs).
+2. **Coded world (mixed regimes).** Named jurisdictions, each with its own liability rule, collection method and observation capacity, read from the coding template. The mixed engine reproduces the single-rule engine exactly when every jurisdiction applies the same rule (acceptance test 13).
+
+The rest of Part B describes the coded world, which the estimation layer uses.
+
+## B2. Holding options
+
+An option is k = (j, c, b, s). For self-hosted configurations s = b. For custodial holdings, an exchange operating in b is seated in b, or in the offshore place h(b) coded for b with share η_b:
+
+    weight of (b, s): 1 − η_b if s = b; η_b if s = h(b).
+
+The non-tax weight of an option is
+
+    A_k = a_j · w_c · π(j, c, b) · η(b, s),
+
+where a_j is the relative holder base resident in j, w_c the weight of configuration c, and the placement weight π is 1 if b = j; m_cust · e_b for custodial holdings abroad (e_b the coded exchange presence); m_self for self-hosted holdings abroad; and effectively zero (10⁻¹²) for custodial holdings at an exchange based or seated in a state that prohibits domestic exchanges. m_cust and m_self are the world settings "ease of holding with a foreign exchange" and "ease of placing self-hosted keys abroad".
+
+Under the **co-location assumption**, every location-based connecting factor of a holding follows its base b, except that registration, and intermediary location under a seat test, follow the seat s.
+
+## B3. Claimants and relief order
+
+For each option and each personal subtype of residents of j (plain residents; residents also resident in, or citizens of, another state, with the coded shares), the ordered claimant list is:
+
+1. base claims: b, if b taxes by control, enclosure or validation; or by intermediary location (custodial only) with a base test, or with a seat test where s = b;
+2. seat claims: s, if s taxes by registration; or by intermediary location (custodial only) with a seat test, or with a base test where s = b;
+3. a co-signer: j, for a multi-signature holding placed abroad where j taxes by control;
+4. residence: j, if j taxes by residence (with or without citizenship); then a second residence state, if it does;
+5. citizenship: a state of citizenship that taxes citizens resident abroad.
+
+Duplicates are dropped. The first entry is the primary claimant; up to three further claimants are kept (subtypes with more are truncated and the truncated share is reported). An empty list is a **gap**.
+
+## B4. Burden
+
+For an entry with primary p and secondaries q₁, …, q_m, the burden per unit of holding is
+
+    B = τ_p v_p + Σ_q [ (1 − ρ_{q,p}) τ_q + ρ_{q,p} softplus(τ_q − τ_p; κ_r) ] v_q,
+
+and for a gap, B = φ_j τ_j (the residence top-up). ρ_{q,p} is the share of double tax that q relieves for tax levied first by p (the directional relief matrix: coded pairs, otherwise the default). v is the visibility of the holding to the claimant:
+
+- custodial holdings, exchange based in b and seated in s, seen by k: V[k, b, s] = 1 if k collects by domestic withholding and k ∈ {b, s}; the coded domestic visibility if k ∈ {b, s} otherwise; the visibility of exchanged information if k and (b or s) exchange information in the scenario year; otherwise k's visibility of self-hosted holdings;
+- self-hosted holdings: k's visibility of self-hosted holdings.
+
+Visibility multiplies the expected burden: tax that cannot be seen is not paid. The model assumes that tax falls on the holder whoever collects it; who bears a withholding tax in practice (incidence) is not modelled.
+
+## B5. Holder choice
+
+Holders choose among all options and an outside option (leaving the asset class). Utility of option k in simulation draw r:
+
+    U_kr = ln A_k − Σ_entries ω · θ_{claimant} · B + ν_{r, j(k)},     U_exit = ln(exit_weight),
+
+where ω is the subtype weight, θ attaches to the primary claimant (to j for a gap), and ν_{r, j} ~ N(0, σ²) is a draw-specific taste for economic location j (antithetic draws; σ is the stickiness of economic location). Shares are logit within each draw and averaged across draws (mixed logit).
+
+**Sensitivity and escape capacity.** θ_i = θ₀ + β E_i with
+
+    E_i = Σ_{n ≠ i} M_{in} softplus(τ_i − τ_n; κ),
+
+where M = (I − αP)⁻¹ is the Katz resolvent of the row-normalised flow matrix P. Flows come from the assignment of holdings to primary claimants, with a share (home bias) of each unit's transactions at its own economic location and the rest spread evenly; flows to unassigned holdings are not flows between jurisdictions.
+
+## B6. Rates and equilibrium
+
+A jurisdiction's rate is either **fixed** at its coded effective rate or **competitive**: set to maximise its revenue R_i given others' rates. Two concepts:
+
+- (a) elasticity-consistent: in each best response θ is held at its current value;
+- (b) partial anticipation: θ is recomputed for each candidate rate, with the network M held fixed.
+
+Best responses use a nested grid search on [0, τ_max] (21 points, 5 rounds). Rates are updated with adaptive damping until the largest change is below 10⁻⁵ and M is stable.
+
+**Epsilon-equilibrium (new in 1.0).** Where a best-response revenue curve is almost flat with two near-equal maxima, rates can cycle between them indefinitely although no state gains materially. From iteration 150, every tenth iteration, the average of the last 30 iterates is tested: if no competitive state could raise its revenue by more than 0.01% (relative) by deviating from it, it is accepted and the largest such gain is reported as `epsilon`. If rates still do not settle, the result is labelled not converged and the largest forgone gain is reported. In a 24-draw robustness sweep (168 solves of concept (a)), one solve remained unsettled, with a forgone gain of 0.03% of that state's revenue.
+
+## B7. Outputs
+
+- Revenue by jurisdiction; effective rate (rule revenue, excluding the residence top-up on gaps, divided by assigned base); yield (all revenue divided by base remaining in the class).
+- Failure measures: gap, overlap, multiple claims (three or more), unrelieved double tax, forgone revenue on gaps, unobserved assigned base.
+- Leakage decomposition after a rate rise into migration, round-tripping, conduit switching, foreign relocation, movement into the gap and exit (per-draw transitions).
+- The mismatch matrix: claimant lists by residence and exchange type, which needs no economic assumptions.
+
+## B8. Episodes
+
+An episode is the coded world with stated changes: jurisdiction fields (liability rule, intermediary test, collection, prohibition of domestic exchanges, visibilities, first year of information exchange, residence top-up, rate mode and effective rate, exchange presence, holder base, offshore incorporation) or settings (scenario year, visibility of exchanged information, default treaty relief). "baseline" is the coded world unchanged. A single reform (for example India 2022) is one episode; staggered adoption of automatic exchange (for example the CARF waves) is one episode per wave, each setting the scenario year.
+
+Each episode is solved separately at the same behavioural parameters. The comparison is between settled states: adjustment is assumed complete within the window over which the data are measured, which is a choice to be pre-registered (build plan s 14.3, issue 4).
+
+## B9. Measurement model
+
+Data record different quantities from the model. Each observation is defined as the model-implied value of what the data record.
+
+**Reported exchange volume.** Volume at an exchange based in b is genuine holdings × genuine turnover t_b, inflated by wash trading with share w_b of reported volume:
+
+    vol_k = s_k · t_b / (1 − w_b)   for custodial options k with base b.
+
+t_b defaults to 1 (equal genuine turnover) and w_b to 0.
+
+**Quantities** (j a residence; masses are option shares s_k or entry masses):
+
+| Quantity | Definition | Recorded as |
+|---|---|---|
+| resident_domestic_exchange_share(j) | Σ vol over custodial options of residents of j based in j / Σ vol over residents' custodial options | volume |
+| resident_offshore_unexchanged_share(j) | same denominator; numerator over options with b ≠ j, s ≠ j and no exchange of information between j and b or s | volume |
+| custodial_share_by_base(i) | Σ vol with base i / Σ vol | volume |
+| custodial_share_by_seat(i) | Σ vol with seat i / Σ vol | volume |
+| resident_custodial_share(j) | residents' custodial holdings / residents' holdings | holdings |
+| resident_share(j) | residents' holdings / all holdings in the class | holdings |
+| resident_visible_share(j) | Σ entry mass × primary visibility over residents' assigned entries / residents' holdings | holdings |
+| resident_gap_share(j) | residents' unassigned holdings / residents' holdings | holdings |
+| exit_share | outside-option share | holdings; only as a change |
+| rate(i) | τ_i | rate |
+| revenue(i) | R_i in model units | only as a change |
+| revenue_share(i) | R_i / Σ R | share |
+
+An observation is a level in one episode, or a **ratio** (episode / comparison episode) or **difference** (episode minus comparison episode). Quantities whose level has no observed counterpart (exit share, revenue in model units) may only be used as changes. Each observation carries a standard error sd_o, in its own units, and a role: **target** (used to estimate) or **holdout** (used only to validate).
+
+## B10. Estimation
+
+Free parameters θ (a subset of θ₀, β, σ, exit weight, home bias, α, m_cust, m_self) are chosen within stated bounds to minimise
+
+    J(θ) = Σ_{targets} ((m_o(θ) − y_o) / sd_o)²,
+
+a simulated minimum-distance criterion with the inverse measurement variances as weights. Other parameters are fixed at stated values (or the interface values). Optimisation is by Levenberg–Marquardt on the residuals, in unbounded coordinates u = logit((θ − lo)/(hi − lo)), from the stated start and further seeded starts; the best fit is kept and the agreement of starts is reported. Equilibria are solved to a tolerance of 10⁻⁶, warm-started from the previous solution of the same episode; within estimation, an epsilon-equilibrium (B6) is accepted only if no state could gain more than 10⁻⁷ of its revenue, and any such acceptance at the estimate is reported. Parameter values, bounds and judgement ranges are checked against the values the model admits (for example 0 ≤ α < 1) before any run.
+
+**Uncertainty.** With G the Jacobian of the target moments (central differences, step 0.5% of each range) and W = diag(1/sd²),
+
+    Var(θ̂) ≈ (G′WG)⁻¹.
+
+This propagates the stated measurement errors; it is not a sampling error, because the data are aggregates without sampling theory. If G′WG is singular (possible only when identification has been overridden), no covariance is reported: standard errors are shown as undetermined and predictions cannot be scored. 95% intervals are θ̂ ± 1.96 se, clipped to the bounds. The fit is summarised by J against χ² with n − k degrees of freedom (when n > k). Warnings are issued for estimates at a bound, for distinct starts reaching different parameters with a similar fit, and for unsettled equilibria at the estimate.
+
+## B11. Identification diagnostics
+
+Before estimation (at the start values) and again at the estimate, the tool computes the scaled Jacobian
+
+    G̃_{o,p} = ∂(m_o / sd_o) / ∂(θ_p / range_p),
+
+the change in each standardised target when a parameter moves across its whole range. From it: the rank and condition number of G̃; the implied standard error of each parameter as a share of its range, sqrt(diag((G̃′G̃)⁻¹)); and near-flat directions (singular vectors with singular value below 1% of the largest). A parameter is **identified** if its relative standard error is below 0.10, **weak** below 0.33, and **not identified** above that, if it lies in a rank-deficient direction, or if it has no effect on the targets. The order condition (at least as many targets as free parameters) is checked. Estimation is refused if any free parameter is not identified, unless the user overrides; the diagnosis is local (at the point where it is computed).
+
+**Finding from the build.** On the illustrative design, θ₀ and β are not separately identified: both raise holders' sensitivity in nearly the same pattern across the targets, probably because escape capacity varies little across the states in this design. The illustrative design therefore estimates θ₀ and m_cust and fixes β by judgement. A real design that wants β will need facts from states whose escape routes differ sharply (build plan s 14.4, item 4).
+
+## B12. Validation
+
+With θ̂ and its covariance Σ, each holdout is predicted as m_h(θ̂). Its band combines (i) parameter uncertainty, H Σ H′ with H the holdout Jacobian, and (ii) a judgement band for parameters fixed by judgement with a stated plausible range: the prediction is recomputed at each end of each range (one parameter at a time), the larger deviation is treated as 1.96 standard deviations, and the contributions are combined in quadrature. A holdout is **consistent** if
+
+    |z| = |y_h − m_h(θ̂)| / sqrt(sd_h² + var_param + var_judgement) ≤ 1.96.
+
+Σ z² is reported against χ² with as many degrees of freedom as holdouts. A holdout whose band cannot be computed (an undetermined parameter direction) is reported as unscorable, never as consistent.
+
+## B13. Known-truth recovery
+
+At stated true values θ*, the tool computes every observation of the design, then estimates blind from starting values at least a tenth of the range away: once without noise, and in R further runs with normal noise of each observation's sd. It passes if the noiseless estimate is within 2% of each parameter's range and every noisy estimate lies within 3.5 standard errors of the truth. It reports bias, root mean squared error, mean standard error and coverage of the 95% intervals. Passing shows that the estimator inverts the model and that its standard errors are honest under correct specification; it is not evidence that the model is correctly specified (build plan s 14.3, issue 3).
+
+## B14. Pre-registration
+
+Freezing records: the SHA-256 fingerprint of the coded world (law, provenance and settings); the episodes and their changes; each observation's definition (quantity, jurisdiction, episodes, comparison, standard error, role, source) **without its value**; the measurement attributes; the parameter settings (free or fixed, values, bounds, judgement ranges); the estimation settings; and the hypotheses. It also records every other model setting estimation will use (the interface values the coded-world engine reads, such as α, home bias, draws and seed, and the world's mobility settings), so that a change to any of them after freezing is a recorded departure. The whole record (title, author, date, the list of observations that already had values, and the content) is fingerprinted with SHA-256 over its canonical JSON and exported as a Markdown document (with the JSON appended) and a JSON record. The record notes any observations that already had values when it was frozen. When a record is loaded, the current design and settings are checked against it and every departure is listed (added, removed or changed items; changed estimation or model settings; changed tool version; a record edited after freezing); a catch-all compares the fingerprints of the whole design. Duplicate identifiers are rejected on reading. The fingerprint cannot prove timing; deposit with an independent registry before data access does.
+
+## B15. Parameters and defaults
+
+| Parameter | Meaning | Default | Range offered for estimation |
+|---|---|---|---|
+| θ₀ | baseline semi-elasticity | 3.0 | 2 to 8 |
+| β | weight of escape capacity | 25 | 0 to 60 |
+| α | per-step discount in the resolvent | 0.6 | 0.1 to 0.95 |
+| σ | dispersion of location tastes | 1.0 | 0 to 3 |
+| exit weight | attractiveness of the outside option | 0.6 | 0.05 to 3 |
+| home bias | share of transactions at home | 0.7 | 0.3 to 0.95 |
+| m_cust | ease of holding with a foreign exchange | 0.40 (world setting) | 0.01 to 2 |
+| m_self | ease of placing self-hosted keys abroad | 0.90 (world setting) | 0.01 to 2 |
+| κ, κ_r | softplus steepness (escape, relief) | 200, 20 | not estimated |
+| draws | simulation draws | 16 | not estimated |
+
+## B16. Assumptions and their limits
+
+1. **Co-location** (B2): a holding's location-based factors follow its base, except seat-based ones. Exchanges with operations in several states are represented by a share split, not by multi-state operations.
+2. **Statutory incidence** (B4): tax falls on the holder; collection affects visibility only.
+3. **Effective rates**: the model uses the effective rate on returns from holdings. Converting statutory rules into effective rates is the coder's task; the user guide sets out a method.
+4. **Static comparison** (B8): episodes are compared as settled states.
+5. **Equal genuine turnover** (B9) unless coded otherwise; reported volume is otherwise proportional to holdings.
+6. **Local identification** (B11): diagnostics hold near the point where they are computed.
+7. **Measurement-error uncertainty only** (B10): no sampling error, no model-specification error. Validation on holdouts is the check on the latter.
+
+---
+
+# Part A. Design decisions and tests (version 0.2)
+
+*Recorded 9 October 2026; citations in section 2 verified. Superseded where Part B differs: in particular, the default β is now 25 (build plan s 10) and the parameter table in section 8 below is the 0.2 table.*
+
+This part records how each open point in the paper's model is resolved for implementation. Every resolution was tested numerically on synthetic data before being adopted. Where a test exposed a flaw in the first proposal, the proposal was revised and the revision retested; the record of what failed is kept, because it bears on what the paper can claim.
 
 ---
 

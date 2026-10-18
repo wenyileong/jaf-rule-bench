@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, asdict, fields
 import numpy as np
 
-VERSION = "0.4"
+VERSION = "1.0"
 CONFIGS = ("custodial", "single", "multisig")
 RULES = ("owner_residence", "intermediary", "control", "enclosure",
          "registration", "validation", "non_assignment")
