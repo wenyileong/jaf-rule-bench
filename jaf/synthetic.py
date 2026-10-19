@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (c) 2026 Wen Yi LEONG
 """Bridge between the 0.2 synthetic world and the mixed engine (used by acceptance test 13)."""
 from __future__ import annotations
 from .params import Params

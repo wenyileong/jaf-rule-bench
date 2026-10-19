@@ -1,9 +1,11 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (c) 2026 Wen Yi LEONG
 """Parameters (model specification v0.2 s 8, revised by build plan s 10)."""
 from __future__ import annotations
 from dataclasses import dataclass, field, asdict, fields
 import numpy as np
 
-VERSION = "0.4"
+VERSION = "1.0"
 CONFIGS = ("custodial", "single", "multisig")
 RULES = ("owner_residence", "intermediary", "control", "enclosure",
          "registration", "validation", "non_assignment")

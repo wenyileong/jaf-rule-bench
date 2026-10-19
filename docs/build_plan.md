@@ -293,3 +293,96 @@ Section 12.4 sets two items for 0.4: lift the co-location assumption for exchang
 
 1. **Author:** code the real-world sample. Three new fields per state: the intermediary location test (if relevant), the typical offshore place of incorporation of exchanges operating there, and its share. Plus the Treaties sheet.
 2. **Then:** the India 2022 case study (calibration and fitting), per the roadmap. Its own logic check should consider whether one natural experiment can identify θ₀, β and σ jointly, or whether some must be fixed by judgement.
+
+---
+
+## 14. Version 1.0: a validation-ready instrument
+
+### 14.1 Purpose and scope
+
+The paper is conceptual and uses the tool only for illustrations, which version 0.4.0 supplies. Version 1.0 is therefore defined not by results but as **an instrument that a later empirical piece can feed with coded law and economic data, and use to test the conceptual model**, with every method proven on known cases before any real data are examined. Two consequences follow: real-world results are out of scope for 1.0 (coding the real sample, acquiring data and running case studies belong to the later piece); and the current paper needs nothing beyond 0.4.
+
+The author confirmed that the later piece will use both designs: **a single reform (India 2022)** and **staggered adoption of automatic exchange (the CARF waves)**. Both are supported.
+
+### 14.2 Components
+
+| # | Component | Implementation |
+|---|---|---|
+| B1 | Economic data layer | Template sheets Episodes, Data, Measurement, Estimation, Hypotheses and a Quantities reference; every observation carries source, date accessed, quality grade (A, B, C) and verification; validated on reading (`jaf/design.py`, `jaf/template.py`) |
+| B2 | Measurement model | Twelve measurable quantities defined as what the data record: reported exchange volume (genuine holdings × turnover ÷ (1 − wash share)) or holdings; levels, ratios or differences between episodes; quantities with no observed level only as changes (`jaf/measure.py`) |
+| B3 | Estimation | Simulated minimum distance weighted by inverse measurement variance; Levenberg–Marquardt in logit-transformed bounded coordinates; multi-start; delta-method standard errors from the stated measurement errors; J statistic (`jaf/estimate.py`) |
+| B4 | Identification diagnostics | Scaled Jacobian, rank, condition number, relative standard error per parameter, flat directions, order condition; estimation refused when a parameter is not identified unless overridden |
+| B5 | Known-truth recovery | Synthetic observations at a stated truth; one noiseless and R noisy blind estimations; pass criteria stated (`jaf/recovery.py`) |
+| B6 | Validation | Holdout predictions with bands from parameter uncertainty and judgement ranges for fixed parameters; z-scores and χ² |
+| B7 | Pre-registration | SHA-256-fingerprinted record of the design without values; Markdown and JSON export; check of the current design against a loaded record (`jaf/prereg.py`) |
+| B8 | Specification | `docs/model_specification.md` Part B: the model as implemented, including all of the above |
+| B9 | Known weaknesses | Epsilon-equilibrium for flat best responses; withholding incidence and statutory-to-effective conversion documented; stale template guidance corrected |
+| B10 | Release quality | Interface tab "Test against data"; user guide (`docs/USER_GUIDE.md`); tests 24 to 35; Windows build under Wine; independent review (s 14.5) |
+
+### 14.3 Logical evaluation (before building)
+
+| # | Issue | Severity | Resolution |
+|---|---|---|---|
+| 1 | Data observe different quantities from the model (exchange domicile not holder residence; volume not holdings; wash trading) | Serious; fatal if omitted | B2 sits between model and data; every estimation target is a measured quantity |
+| 2 | One episode supplies few moments; θ₀, β, σ may not be separately identified | Serious | B4 runs before any estimate is reported; unidentified parameters are fixed by judgement and disclosed, or episodes added |
+| 3 | Recovery tests are circular | Not a flaw if stated | Their purpose is to show the estimator inverts the model; whether the model is true is tested by B6 on real data |
+| 4 | Static model, dynamic events | Moderate | Settled states compared over a pre-registered window |
+| 5 | Pre-registration cannot be enforced locally | Moderate | The record is fingerprinted; credibility comes from deposit with an independent registry; the tool says so |
+| 6 | Uncertainty without standard errors | Moderate | Bands from stated measurement error and judgement ranges, labelled as such |
+| 7 | Scope creep into real-data runs | Moderate | Excluded from 1.0 by definition; the release ships only the invented example and synthetic data |
+| 8 | Competitive rates during estimation | Minor | Coded states use fixed effective rates; competitive mode remains available |
+
+**Verdict.** No fatal flaw, provided the measurement model and identification diagnostics precede estimation. Both were built first.
+
+### 14.4 Decisions and findings during the build
+
+1. **Flat best responses (B9).** In a 24-draw robustness sweep, four of 168 concept (a) solves did not settle: a state's revenue curve had two near-equal maxima, and its rate cycled between them. An epsilon-equilibrium rule now accepts the average of the cycle when no state could gain more than 0.01% of revenue by deviating, and reports that gain. One solve still does not settle (a network that shifts with the cycling rate); it is labelled, with a forgone gain of 0.03%. Solves that settle normally are unchanged; a few concept (b) solves that previously took over 150 iterations now stop at the accepted average. Rerunning the default comparison (12 robustness draws), the rankings and the findings register are unchanged, the largest change in any effective rate is 0.0006, and unsettled solves in the robustness draws fall from three to one.
+2. **Optimiser.** Nelder–Mead needed about 1,700 equilibrium solves for the illustrative design (about 400 seconds); Levenberg–Marquardt on the residuals reaches the same minimum in about 300 (about 60 seconds). Nelder–Mead is retained as an option.
+3. **Exit weight is not identified** by changes in the exit share: with a small outside option, the proportional response of exit barely depends on its weight. The identification diagnostics flag this; the illustrative design fixes it by judgement.
+4. **θ₀ and β are not separately identified on the illustrative design.** Both raise holders' sensitivity in nearly the same pattern across the targets (relative standard errors of 0.14 and 0.16 of their ranges when estimated together with the ease of using a foreign exchange, against 0.05 for θ₀ when β is fixed). In a three-parameter estimation on noisy synthetic data, the estimator traded one for the other (θ₀ 4.8 against a truth of 3.4, β 7 against 30, both within their wide intervals). The illustrative design therefore estimates θ₀ and the ease of using a foreign exchange, and fixes β by judgement with a plausible range that widens the prediction bands. **Consequence for the empirical piece:** estimating β needs facts from states whose escape routes differ sharply, for example responses in a hub-adjacent state against an isolated one.
+5. **Recovery on the illustrative design.** Noiseless: both parameters recovered to within 10⁻⁸ of their range. Noisy runs: estimates within 1.6 standard errors of the truth; validation passes 3 of 3 holdouts.
+
+### 14.5 Acceptance tests added for 1.0
+
+- 24: cycling rates accepted as an epsilon-equilibrium; the forgone gain reported when rates do not settle.
+- 25: exchange shares sum to one; wash trading inflates reported volume by 1 ÷ (1 − wash share), checked against a hand computation.
+- 26: with every state exchanging information, no resident's trading lies outside the reporting net.
+- 27: episodes change only what they state and leave the coded world untouched.
+- 28: the design round-trips through the workbook; a 0.4 workbook loads with no design and no error.
+- 29: design validation catches an unknown quantity, a missing standard error, an undefined episode, a level-only quantity without a comparison, and an episode field that may not be changed.
+- 30: identification distinguishes an order-condition failure, an irrelevant parameter and a well-identified design.
+- 31: estimation is refused when identification fails.
+- 32: known-truth recovery (noiseless within 0.1% of range; noisy within 3.5 standard errors).
+- 33: with noiseless data, every holdout prediction is consistent.
+- 34: pre-registration excludes values from the fingerprint, and detects changes after freezing and edits to the record.
+- 35: χ² tail probabilities against known values.
+- 36 to 40: regression tests for the independent review's findings (s 14.7).
+
+All 40 tests pass.
+
+### 14.6 Independent review
+
+Before release, the new code was reviewed by a separate agent that had not seen it being built, with a brief to find errors that would produce wrong numbers or misleading conclusions silently. It reported five confirmed and five plausible findings; all ten were fixed (s 14.7).
+
+### 14.7 Review findings and fixes
+
+| # | Finding | Status | Fix |
+|---|---|---|---|
+| 1 | With identification overridden and a singular information matrix, the pseudo-inverse gave zero variance in the undetermined direction, so a holdout could be judged consistent with no parameter uncertainty | Confirmed | No covariance when singular; such holdouts are reported as unscorable (test 38) |
+| 2 | The fingerprint covered only the record's content, so its date and its list of values present at freezing could be edited undetected | Confirmed | The whole record is fingerprinted (test 36) |
+| 3 | Duplicate hypothesis IDs or measurement rows collapsed in the check, hiding changes | Confirmed | Duplicates rejected on reading and in the interface; catch-all fingerprint comparison (test 37) |
+| 4 | Settings that change results (α, home bias, draws, seed, configuration weights) were not frozen | Confirmed | Resolved settings frozen and compared (test 37) |
+| 5 | Infinite values were sent to the browser as `Infinity`, which it rejects, blanking the tab exactly when identification failed | Confirmed | Non-finite numbers sent as null (test 39) |
+| 6 | With a rank deficiency of two or more, a parameter in the second null direction could be labelled identified | Confirmed | Test against the whole null space (test 38) |
+| 7 | Out-of-domain parameter values and reversed bounds were accepted | Confirmed | One validator for the workbook and the interface (test 40) |
+| 8 | Changing settings or loading a world while a task ran could attach results to the wrong design | Plausible | Refused while a task runs; each task works on its own copies |
+| 9 | Accepting an approximate equilibrium could make measured quantities jump with the parameters, distorting finite-difference derivatives | Plausible | Within estimation the acceptance threshold is 10⁻⁷ of revenue, and any acceptance at the estimate is reported |
+| 10 | The illustrative synthetic data were cached for the first world only | Plausible | Cached by world fingerprint; generated only for the unmodified invented world |
+
+The reviewer found the measurement definitions, the χ² tail (agreeing with a reference implementation to about 10⁻¹²), the validation z-score, the relative standard errors and the optimiser's behaviour at a bound sound.
+
+### 14.8 What remains outside 1.0
+
+- **Licence:** not yet chosen; until then all rights are reserved.
+- **Test on a Windows machine:** the executable has been built and smoke-tested under Wine only.
+- **The empirical piece:** coding and verifying the real sample; collecting data for the India 2022 and CARF designs; freezing and depositing the pre-registration before data access; estimation and validation. Section 14.4, items 3 and 4, should inform its design.

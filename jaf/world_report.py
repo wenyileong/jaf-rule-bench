@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (c) 2026 Wen Yi LEONG
 """Run a coded world and its counterfactuals; produce the payload for the interface (build plan s 12)."""
 from __future__ import annotations
 import datetime

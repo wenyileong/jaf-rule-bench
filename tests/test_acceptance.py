@@ -1,4 +1,6 @@
-"""Acceptance tests for v0.2 (specification s 9; build plan ss 9 and 10).
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (c) 2026 Wen Yi LEONG
+"""Acceptance tests (specification s 9; build plan ss 9, 10, 12, 13 and 14).
 Run: PYTHONPATH=. python3 tests/test_acceptance.py
 """
 import numpy as np
@@ -164,6 +166,157 @@ bio = io.BytesIO(); wb23.save(bio); w23, iss23 = read_template(bio.getvalue())
 check("23 a template from 0.3 (no new columns, no Treaties sheet) loads, with warnings and defaults",
       w23 is not None and not w23.treaties and all(i["level"] == "warning" for i in iss23)
       and any("Assumed to locate intermediaries by legal seat" in i["message"] for i in iss23))
+
+# ---- version 1.0 (build plan s 14) ------------------------------------------------------------
+import copy, json, math
+from jaf.design import Design, Observation, ParamSpec, apply_episode, fingerprint
+from jaf.measure import Measured, QUANTITIES, observation_value
+from jaf.estimate import Model, identification, estimate, validate, chi2_sf
+from jaf.examples import illustrative_design, illustrative_design_skeleton, TRUTH
+from jaf.recovery import recovery
+from jaf import prereg as PRE
+from jaf.template import read_workbook
+
+base24 = Params(); rng24 = np.random.default_rng(base24.seed * 31 + 5); lev = [0.25, 0.5, 1.0, 1.5]; P24 = []
+for d_ in range(10):
+    P24.append(base24.replace(seed=int(rng24.integers(1, 10_000)), mobility_scale=lev[d_ % 4], beta=float(rng24.uniform(0.0, 50.0)),
+                              theta0=float(rng24.uniform(2.6, 4.0)), rho=float(rng24.uniform(0.3, 1.0)), phi=float(rng24.uniform(0.0, 0.4)),
+                              sigma=float(rng24.uniform(0.5, 2.0)), kappa_relief=float(rng24.choice([10.0, 20.0, 40.0]))))
+e24 = solve(Compiled("owner_residence", P24[5]), "a"); e24b = solve(Compiled("control", P24[9]), "a")
+check("24 flat best responses: cycling rates accepted as an epsilon-equilibrium, and the forgone gain reported when not",
+      e24["converged"] and e24["epsilon"] is not None and e24["epsilon"] < 1e-4 and e24b["epsilon"] is not None and e24b["epsilon"] < 1e-3,
+      f"accepted gain {e24['epsilon']:.1e}; unconverged case forgoes {e24b['epsilon']:.1e}")
+
+wI = illustrative_world(); dI = illustrative_design(wI)
+cI = MixedCompiled(wI); eI = solve(cI, "a"); M0 = Measured(cI, eI); M1 = Measured(cI, eI, dI)
+shares = sum(M0.value("custodial_share_by_base", k) for k in wI.codes)
+raw = np.array([eI["s"][(cI.c == 0) & (cI.p == k)].sum() for k in range(wI.N)])
+wash = np.zeros(wI.N); wash[wI.index("H1")] = 0.30; wash[wI.index("H2")] = 0.20
+adj = raw / (1 - wash); want = adj[wI.index("H1")] / adj.sum()
+check("25 measurement: exchange shares sum to 1; wash trading inflates reported volume by 1/(1 - wash share)",
+      abs(shares - 1) < 1e-12 and abs(M1.value("custodial_share_by_base", "H1") - want) < 1e-12, f"H1 {M0.value('custodial_share_by_base', 'H1'):.4f} -> {want:.4f}")
+
+wAll = World.from_dict(wI.to_dict())
+for j_ in wAll.jurisdictions:
+    j_.info_exchange_from = 2027
+wAll.settings.scenario_year = 2030
+cA = MixedCompiled(wAll); eA = solve(cA, "a"); MA = Measured(cA, eA)
+check("26 measurement: with every state exchanging information, no resident's trading is outside the reporting net",
+      max(MA.value("resident_offshore_unexchanged_share", k) for k in wAll.codes) < 1e-12)
+
+ref = json.dumps(wI.to_dict(), sort_keys=True)
+wr = apply_episode(wI, dI.episode("reform")); ww = apply_episode(wI, dI.episode("wave_2030"))
+check("27 episodes change only what they state and leave the coded world untouched",
+      wr.jurisdictions[0].effective_rate == 0.36 and wr.jurisdictions[0].collection == "domestic_withholding"
+      and ww.settings.scenario_year == 2030 and ww.jurisdictions[wI.index("H2")].info_exchange_from == 2030
+      and json.dumps(wI.to_dict(), sort_keys=True) == ref)
+
+w28, d28, i28 = read_workbook(write_template(kind="illustrative"))
+wb28 = load_workbook(io.BytesIO(write_template(kind="illustrative")))
+for n_ in ("Episodes", "Data", "Measurement", "Estimation", "Hypotheses", "Quantities"):
+    del wb28[n_]
+bio = io.BytesIO(); wb28.save(bio); w28b, d28b, i28b = read_workbook(bio.getvalue())
+check("28 design round trip through the workbook; a 0.4 workbook (no design sheets) loads with no design and no error",
+      d28 is not None and d28.to_dict() == dI.to_dict() and w28b is not None and d28b is None and not [i for i in i28b if i["level"] == "error"])
+
+wb29 = load_workbook(io.BytesIO(write_template(kind="illustrative"))); ds = wb29["Data"]
+hdr29 = [str(c.value).rstrip(" *") for c in ds[1]]; col29 = lambda n: hdr29.index(n) + 1
+ds.cell(3, col29("Quantity")).value = "volume_of_everything"
+ds.cell(4, col29("Standard error")).value = None
+ds.cell(5, col29("Episode")).value = "no_such_episode"
+ds.cell(7, col29("Compared with episode")).value = None                  # T5: exit_share needs a comparison
+es29 = wb29["Episodes"]; es29.cell(3, 3).value = "holder_name"           # field an episode may not change
+bio = io.BytesIO(); wb29.save(bio); w29, d29, i29 = read_workbook(bio.getvalue())
+m29 = " | ".join(i["message"] for i in i29)
+check("29 design validation: unknown quantity, missing standard error, undefined episode, level not usable, bad episode field",
+      w29 is None and "Unknown quantity" in m29 and "positive standard error" in m29 and "is not defined in the Episodes" in m29
+      and "has no observed counterpart in levels" in m29 and "An episode cannot change 'holder_name'" in m29)
+
+d30 = copy.deepcopy(dI); d30.observations = [o for o in d30.observations if o.id == "T1"]
+id30a = identification(Model(wI, d30))
+d30b = copy.deepcopy(dI); d30b.params = [ParamSpec("exit_weight", True, 0.6, 0.1, 2.0)]
+id30b = identification(Model(wI, d30b))
+id30c = identification(Model(wI, dI))
+check("30 identification: order condition, an irrelevant parameter and a well-identified design are told apart",
+      id30a["status"] == "fail" and "order condition" in " ".join(id30a["reasons"])
+      and id30b["status"] == "fail" and id30b["params"][0]["status"] in ("not identified", "no effect") and id30c["status"] == "ok",
+      f"{id30a['status']} / {id30b['params'][0]['status']} / {id30c['status']}")
+
+r31 = estimate(Model(wI, d30b), check_first=True)
+check("31 estimation refuses when identification fails, unless overridden", r31["status"] == "refused")
+
+rec = recovery(wI, illustrative_design_skeleton(), TRUTH, reps=1, seed=5)
+s32 = {s_["name"]: s_ for s_ in rec["summary"]}
+check("32 known-truth recovery: noiseless estimates within 0.1% of range; noisy estimate within 3.5 s.e.",
+      rec["passed"] and all(abs(s_["noiseless_rel_error"]) < 1e-3 for s_ in rec["summary"]),
+      "; ".join(f"{n}: {s_['noiseless']:.4f} (truth {s_['truth']}), noisy z {s_['max_abs_z']:.2f}" for n, s_ in s32.items()))
+check("33 validation: with noiseless data, every holdout prediction is consistent", rec["runs"][0]["validation"]["passed"] == rec["runs"][0]["validation"]["n"] == 3)
+
+r34 = PRE.freeze(wI, illustrative_design_skeleton(), author="Test")
+rt = json.loads(json.dumps(r34))
+c34a = PRE.check(rt, wI, dI)                                             # values added later: still consistent
+d34 = copy.deepcopy(dI); d34.observations[0].sd = 0.05; d34.params[0].upper = 7.0
+c34b = PRE.check(rt, wI, d34)
+rt2 = copy.deepcopy(rt); rt2["content"]["observations"][0]["sd"] = 0.5
+c34c = PRE.check(rt2, wI, dI)
+md = PRE.to_markdown(rt)
+check("34 pre-registration: values excluded from the fingerprint; changes after freezing and edits to the record detected",
+      c34a["consistent"] and not r34["values_present_at_freeze"] and len(c34b["deviations"]) == 2 and not c34c["record_intact"]
+      and r34["fingerprint"] in md and fingerprint({k: v for k, v in rt.items() if k != "fingerprint"}) == r34["fingerprint"])
+
+check("35 chi-square tail probabilities", abs(chi2_sf(3.841459, 1) - 0.05) < 1e-5 and abs(chi2_sf(11.0705, 5) - 0.05) < 1e-5
+      and abs(chi2_sf(2.0, 2) - math.exp(-1)) < 1e-10)
+
+# ---- independent review findings (build plan s 14.7) ---------------------------------------------
+from jaf.estimate import validate_spec, EST_PARAMS
+from jaf.design import Hypothesis, Measurement
+dv = illustrative_design(wI)
+r36 = PRE.freeze(wI, dv)                                                  # values present when frozen
+t36 = copy.deepcopy(r36); t36["values_present_at_freeze"] = []; t36["created"] = "2020-01-01T00:00:00"
+c36 = PRE.check(t36, wI, dv)
+check("36 review 2: editing a record's date or its list of values present at freezing is detected",
+      bool(r36["values_present_at_freeze"]) and not c36["record_intact"] and not c36["consistent"])
+
+r37 = PRE.freeze(wI, illustrative_design_skeleton(), base=Params())
+c37a = PRE.check(r37, wI, illustrative_design_skeleton(), Params(alpha=0.5))
+d37 = illustrative_design_skeleton(); d37.hypotheses.append(Hypothesis("EH1", "duplicate")); d37.measurement.append(Measurement("H1", 0.9))
+wb37 = load_workbook(io.BytesIO(write_template(wI, design=d37))); bio = io.BytesIO(); wb37.save(bio)
+w37, d37r, i37 = read_workbook(bio.getvalue()); m37 = " | ".join(i["message"] for i in i37)
+check("37 review 3 and 4: a changed model setting is a deviation; duplicate hypothesis IDs and measurement rows are rejected",
+      not c37a["consistent"] and "alpha (0.6 then, 0.5 now)" in " ".join(c37a["deviations"])
+      and w37 is None and "used more than once" in m37 and "described more than once" in m37)
+
+class Linear(Model):
+    """Stand-in model with linear moments: targets see theta0 + beta + sigma only; the holdout sees theta0 - beta."""
+    def moments(self, values, obs):
+        t, b, g = values["theta0"], values["beta"], values["sigma"]
+        return np.array([(t + b + g) * (i + 1) if o.role == "target" else t - b for i, o in enumerate(obs)], float)
+    def converged(self, values):
+        return True
+    def approximate(self, values):
+        return None
+d38 = Design(observations=[Observation(f"T{i}", "exit_share", "", "baseline", sd=0.1, value=6.0 * (i + 1)) for i in range(3)]
+             + [Observation("V1", "exit_share", "", "baseline", sd=0.1, value=0.0, role="holdout")],
+             params=[ParamSpec("theta0", True, 3.0, 0.0, 10.0), ParamSpec("beta", True, 2.0, 0.0, 10.0), ParamSpec("sigma", True, 1.0, 0.0, 10.0)], starts=1)
+m38 = Linear(wI, d38)
+id38 = identification(m38)
+e38 = estimate(m38, override=True); v38 = validate(m38, e38)
+check("38 review 1 and 6: with rank deficiency 2 every parameter is 'not identified'; an undetermined holdout cannot be scored",
+      [p_["status"] for p_ in id38["params"]] == ["not identified"] * 3 and id38["rank"] == 1
+      and v38["unscorable"] == 1 and v38["n"] == 0 and "z" not in v38["rows"][0], f"rank {id38['rank']}")
+
+import importlib.util, sys as _sys
+spec_ = importlib.util.spec_from_file_location("srv", "app/server.py"); srv = importlib.util.module_from_spec(spec_); spec_.loader.exec_module(srv)
+txt39 = json.dumps(srv._finite({"a": float("inf"), "b": [1.0, float("nan"), {"c": np.float64("-inf")}], "d": np.array([1.0, np.inf])}), allow_nan=False)
+check("39 review 5: non-finite numbers are sent to the browser as null, never as Infinity or NaN",
+      txt39 == '{"a": null, "b": [1.0, null, {"c": null}], "d": [1.0, null]}', txt39)
+
+e40 = validate_spec([ParamSpec("alpha", False, 1.3), ParamSpec("sigma", False, -1.0), ParamSpec("theta0", True, 9.0, 5.0, 5.0),
+                     ParamSpec("beta", True, 30.0, 40.0, 20.0), ParamSpec("beta", False, 25.0), ParamSpec("exit_weight", False, 0.6, judgement_low=0.3)])
+check("40 review 7: parameter values outside what the model admits, reversed or empty bounds and duplicates are rejected",
+      len(e40) >= 6 and any("alpha" in x and "outside" in x for x in e40) and any("sigma" in x for x in e40)
+      and any("theta0" in x and "below the upper" in x for x in e40) and any("more than once" in x for x in e40)
+      and any("both ends" in x for x in e40), f"{len(e40)} errors")
 
 print(f"\n{sum(results)}/{len(results)} passed")
 raise SystemExit(len(results) - sum(results))

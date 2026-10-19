@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (c) 2026 Wen Yi LEONG
 """Experiments (build plan s 5, revised s 10)."""
 from __future__ import annotations
 import numpy as np
