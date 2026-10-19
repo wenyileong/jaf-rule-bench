@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (c) 2026 Wen Yi LEONG
 """Local server for JAF Rule Bench: serves the interface and runs the model on request.
 Binds to 127.0.0.1 only; nothing leaves the machine."""
 from __future__ import annotations
@@ -589,6 +591,8 @@ def main(open_browser=True):
     print(f"JAF Rule Bench {VERSION}")
     print(f"Interface: {url}")
     print("Runs locally; nothing is sent over the internet.")
+    print("Free for noncommercial use (PolyForm Noncommercial 1.0.0; documents CC BY-NC 4.0).")
+    print("Bundled components keep their own licences: see THIRD_PARTY_NOTICES.txt.")
     print("Close this window, or press Ctrl+C, to quit.\n")
     if open_browser and not os.environ.get("JAF_NO_BROWSER"):
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()

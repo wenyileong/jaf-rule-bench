@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (c) 2026 Wen Yi LEONG
 """Known-truth recovery tests (build plan s 14, component B5).
 
 The model generates synthetic "observations" at parameter values set in advance; the estimator is then run

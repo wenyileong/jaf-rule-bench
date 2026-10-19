@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (c) 2026 Wen Yi LEONG
 """Empirical design: episodes, observations, measurement attributes, estimation settings and hypotheses
 (build plan s 14, components B1 and B7).
 

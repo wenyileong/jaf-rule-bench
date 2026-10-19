@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (c) 2026 Wen Yi LEONG
 """Assemble a full run (default world, comparisons, sweep) into a JSON-ready payload."""
 from __future__ import annotations
 import datetime, hashlib, json

@@ -12,6 +12,7 @@ Version 1.0 is a validation-ready instrument: it can test the model against data
 - Rates that cycle between near-equal revenue maxima are accepted as an epsilon-equilibrium and the forgone gain reported.
 - Specification rewritten for the current model (Part B); new user guide; template guidance corrected.
 - Workbooks from 0.4 load unchanged.
+- Licensed: code under the PolyForm Noncommercial License 1.0.0; documents, templates and data under CC BY-NC 4.0. Third-party notices for the components bundled in the Windows executable.
 
 ## 0.4.0 (2026-10-16)
 - Exchanges may operate in one state and be incorporated in another; each intermediary-based state codes its own location test (incorporation or operations).

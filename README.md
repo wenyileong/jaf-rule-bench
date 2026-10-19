@@ -69,8 +69,15 @@ The code and documentation were developed with the assistance of Claude, an AI s
 
 ## Licence
 
-Not yet decided. Until a licence is added, all rights are reserved by the author: the code may be read and run for review, but not redistributed or adapted. See `LICENCE_TO_CHOOSE.md`.
+JAF Rule Bench is free for noncommercial use: research, study, teaching, and use by universities, public research organisations, charities and government bodies. Commercial use needs a separate licence, available from the author on request (wenyistudies@gmail.com).
 
-Bundled components keep their own licences. The Windows executable includes third-party components (CPython, NumPy, openpyxl, et_xmlfile, the PyInstaller bootloader and the Microsoft Visual C++ runtime), each of which remains under its own licence; their notices and licence texts are reproduced in full in `THIRD_PARTY_NOTICES.txt`, which is shipped with every release. The licence of JAF Rule Bench, once chosen, covers only its own code and documents. The source code in this repository does not include those components: NumPy and openpyxl are installed separately (`requirements.txt`) under their own licences (BSD-3-Clause and MIT).
+| Part | Licence | File |
+|---|---|---|
+| Code: `jaf/`, `app/server.py`, `app/ui.html`, `main.py`, `tests/`, `tools/` | [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) (`PolyForm-Noncommercial-1.0.0`) | `LICENSE.md` |
+| Documents, templates and data: `README.md`, `CHANGELOG.md`, `docs/`, `templates/`, `app/default_result.json`, `app/default_world_result.json` | [Creative Commons Attribution-NonCommercial 4.0 International](https://creativecommons.org/licenses/by-nc/4.0/) (`CC-BY-NC-4.0`) | `LICENSE-docs.txt` |
+
+Under the code licence you may use, change and share the code for any noncommercial purpose. Anyone who passes on a copy must include the licence terms (or their URL) and the lines in `LICENSE.md` beginning `Required Notice:`. Under the documents licence you may share and adapt the documents, templates and data for noncommercial purposes, with attribution.
+
+Bundled components keep their own licences. The Windows executable includes third-party components (CPython, NumPy, openpyxl, et_xmlfile, the PyInstaller bootloader and the Microsoft Visual C++ runtime), each of which remains under its own licence; their notices and licence texts are reproduced in full in `THIRD_PARTY_NOTICES.txt`, which is shipped with every release. The licences above cover only JAF Rule Bench's own code and documents. The source code in this repository does not include those components: NumPy and openpyxl are installed separately (`requirements.txt`) under their own licences (BSD-3-Clause and MIT).
 
 Copyright © 2026 Wen Yi LEONG.

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (c) 2026 Wen Yi LEONG
 """Equilibrium (specification s 1; plan s 4). Concept (a): elasticity-consistent.
 Concept (b): partial anticipation (sensitivity anticipated, network held fixed)."""
 from __future__ import annotations

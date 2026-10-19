@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (c) 2026 Wen Yi LEONG
 """Mixed-regime engine: each jurisdiction applies its own rule (build plan s 12).
 
 Options are (residence j, configuration c, placement p) as in 0.2. Under the co-location assumption

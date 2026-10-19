@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (c) 2026 Wen Yi LEONG
 """A coded world of named jurisdictions with their own assignment rules (build plan s 12).
 
 Each jurisdiction carries three layers: liability (which connecting factor it taxes on),

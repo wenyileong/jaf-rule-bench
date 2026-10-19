@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (c) 2026 Wen Yi LEONG
 """Measurement model (build plan s 14, component B2).
 
 Data never record the model's quantities directly. Exchange statistics are recorded by where an exchange

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (c) 2026 Wen Yi LEONG
 """Illustrative empirical design on the invented world (build plan s 14).
 
 It mirrors the two designs the later empirical work will use, on hypothetical states only:

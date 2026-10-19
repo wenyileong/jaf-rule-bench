@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (c) 2026 Wen Yi LEONG
 """Acceptance tests (specification s 9; build plan ss 9, 10, 12, 13 and 14).
 Run: PYTHONPATH=. python3 tests/test_acceptance.py
 """

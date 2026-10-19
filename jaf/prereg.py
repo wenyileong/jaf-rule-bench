@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (c) 2026 Wen Yi LEONG
 """Pre-registration export and check (build plan s 14, component B7).
 
 Freezing records, before data are examined: the coded law (by fingerprint), the episodes, which quantities will

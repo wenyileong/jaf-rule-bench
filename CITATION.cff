@@ -16,4 +16,7 @@ keywords:
   - international taxation
   - assignment rules
 # doi: "10.5281/zenodo.XXXXXXX"   (add the DOI reserved on Zenodo for this version)
-# license:                          (to be decided; until then, all rights are reserved)
+license:
+  - PolyForm-Noncommercial-1.0.0
+  - CC-BY-NC-4.0
+repository-code: "https://github.com/wenyileong/jaf-rule-bench"

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (c) 2026 Wen Yi LEONG
 """Excel coding template: write, read and validate (build plan s 12)."""
 from __future__ import annotations
 import io, datetime
@@ -101,6 +103,11 @@ README = [
     "",
     "The rows in an 'Illustrative' workbook describe hypothetical states and must not be cited as law.",
     "",
+    "Licence",
+    "This template is part of JAF Rule Bench, Copyright (c) 2026 Wen Yi LEONG, and is licensed under the Creative",
+    "Commons Attribution-NonCommercial 4.0 International licence (CC BY-NC 4.0):",
+    "https://creativecommons.org/licenses/by-nc/4.0/. The entries you add to it are your own.",
+    "",
     "Data for testing the model (optional; build plan s 14)",
     "The sheets Episodes, Data, Measurement, Estimation and Hypotheses hold an empirical design. They are needed only",
     "to estimate the model's behavioural parameters from observed facts and to test its predictions (the 'Test against",
@@ -122,7 +129,7 @@ README = [
     "  by judgement (free = no, with a value and, optionally, a plausible range used to widen prediction bands).",
     "- Hypotheses: the claims the data are to test, and what result would support or refute each.",
 ]
-README_HEADS = ("What this is", "How to fill it", "Modelling assumptions to keep in mind",
+README_HEADS = ("What this is", "How to fill it", "Modelling assumptions to keep in mind", "Licence",
                 "Data for testing the model (optional; build plan s 14)")
 
 

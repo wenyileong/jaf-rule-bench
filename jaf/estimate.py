@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (c) 2026 Wen Yi LEONG
 """Estimation, identification diagnostics and validation (build plan s 14, components B3, B4 and B6).
 
 Method: simulated minimum distance. Chosen behavioural parameters are set so that the model-implied measured

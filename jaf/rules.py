@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (c) 2026 Wen Yi LEONG
 """Options, assignment rules and the mixed-logit share model (build plan s 3, revised s 10)."""
 from __future__ import annotations
 import numpy as np

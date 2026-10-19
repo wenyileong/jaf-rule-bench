@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (c) 2026 Wen Yi LEONG
 """Assemble THIRD_PARTY_NOTICES.txt for the Windows executable from the build environment.
 
 Usage: python tools/make_third_party_notices.py <python-dir> [output]
@@ -10,9 +12,10 @@ HEADER = """JAF Rule Bench: third-party notices
 ====================================
 
 The Windows executable (JAF_Rule_Bench.exe) bundles the third-party components listed
-below. Each remains under its own licence, reproduced in full in this file. The licence
-of JAF Rule Bench itself (see README.md) covers only its own code and documents, not
-these components. The source code repository does not contain these components; they
+below. Each remains under its own licence, reproduced in full in this file. The licences
+of JAF Rule Bench itself (PolyForm Noncommercial 1.0.0 for its code, LICENSE.md; CC BY-NC
+4.0 for its documents, templates and data, LICENSE-docs.txt) cover only its own code and
+documents, not these components. The source code repository does not contain these components; they
 are installed separately (requirements.txt).
 
 Component                                   Version   Licence
