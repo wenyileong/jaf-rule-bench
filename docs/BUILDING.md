@@ -17,3 +17,11 @@ pyinstaller --noconfirm --onefile --console --name JAF_Rule_Bench ^
 The result is `dist/JAF_Rule_Bench.exe`. Releases to date were built with CPython 3.12.9, NumPy 2.1.3, openpyxl 3.1.5 and PyInstaller 6.11.1, under Wine. They have not yet been tested on a Windows machine.
 
 Do not commit `dist/` or `build/`: attach the executable to a GitHub Release instead.
+
+## Third-party notices
+
+The executable bundles third-party components that remain under their own licences. Every release must ship `THIRD_PARTY_NOTICES.txt` alongside the executable. Regenerate it from the Python installation used for the build whenever a bundled component or its version changes:
+
+```
+python tools/make_third_party_notices.py <path-to-build-python> THIRD_PARTY_NOTICES.txt
+```

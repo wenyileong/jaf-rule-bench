@@ -71,4 +71,6 @@ The code and documentation were developed with the assistance of Claude, an AI s
 
 Not yet decided. Until a licence is added, all rights are reserved by the author: the code may be read and run for review, but not redistributed or adapted. See `LICENCE_TO_CHOOSE.md`.
 
+Bundled components keep their own licences. The Windows executable includes third-party components (CPython, NumPy, openpyxl, et_xmlfile, the PyInstaller bootloader and the Microsoft Visual C++ runtime), each of which remains under its own licence; their notices and licence texts are reproduced in full in `THIRD_PARTY_NOTICES.txt`, which is shipped with every release. The licence of JAF Rule Bench, once chosen, covers only its own code and documents. The source code in this repository does not include those components: NumPy and openpyxl are installed separately (`requirements.txt`) under their own licences (BSD-3-Clause and MIT).
+
 Copyright © 2026 Wen Yi LEONG.
