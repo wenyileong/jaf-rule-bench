@@ -118,17 +118,17 @@ Everything the program saves, and a copy of everything you load into it, is kept
 - **Preview** a table, a workbook, a text or JSON file, an image, or a saved result (with the list of its files) by clicking its name.
 - **Organise**: new folder, rename, move to, copy to. Moving and copying first show exactly what will happen; a name already taken gets " (2)".
 - **Delete safely**: "Move to Trash" keeps where each item came from; "Restore" puts it back; only "Empty the Trash", with its own confirmation, deletes permanently.
-- **Undo** the last change (a move, copy, rename, new folder or move to the Trash).
+- **Undo** the most recent change (a move, copy, rename, new folder or move to the Trash). Only one step can be undone; undoing a copy moves the copies to the Trash. If an operation stops partway (for example, a file is open in another program), what was done is recorded and can be undone.
 - **Check for changes**: the program recomputes the fingerprint (SHA-256) of every file in the saved results and reports any that differ. A file you opened and saved in Excel will show as changed; that is expected.
 - **Download** a file through the browser, or **Show in Explorer** to open its folder.
 - Every action is listed under **What has been done**, and kept in the library, so it travels with it.
 
 **Taking work to another computer**
 - *Some results*: tick them, choose **Package for another computer**, download the package, and on the other computer use **Bring in a file or package**. The package records the fingerprint of every file; it is checked before anything is unpacked, and refused if anything has changed or if it tries to write outside the library.
-- *Everything*: under **Where your library is kept**, give the path of a folder on a USB stick or external drive, **Check the move**, then **Move the library**. On another drive every file is copied and checked before the program switches, and the old folder is left as it was. On the other computer, give that path and choose **Use a library already there**.
+- *Everything*: under **Where your library is kept**, give the path of a folder on a USB stick or external drive, **Check the move**, then **Move the library**. On another drive every file is copied and checked before the program switches, and the old folder is left as it was. On the other computer, give that path and choose **Use a library already there**: the program checks every saved result in it, shows what it found, and switches only when you confirm. Only a folder that is already a library (it holds the program's `.jaf` folder) can be used this way.
 - A synced folder (OneDrive, Dropbox) works, but keep the files available offline.
 
-**Safety.** The engine runs only on your computer and accepts changes only from its own interface, so a web page you visit cannot move or delete your files through it. Paths outside the library are refused.
+**Safety.** The engine runs only on your computer and accepts changes only from its own interface, so a web page you visit cannot move or delete your files through it. Paths outside the library are refused, and links (shortcuts to other places) inside it are not followed.
 
 ## 8. Troubleshooting
 
@@ -141,7 +141,7 @@ Everything the program saves, and a copy of everything you load into it, is kept
 | Estimation is slow | Each step re-solves every episode many times. Reduce the number of search starts, estimated settings or episodes |
 | Results from an earlier version | Results saved by an earlier version are discarded on start; re-run |
 | A file is refused with "larger than 512 MB" | Move larger collections with "Move the library", or copy the package file directly |
-| The library is on a drive that is not connected | The program falls back to the default location; reconnect the drive, or use "Use a library already there" |
+| The library is on a drive that is not connected | The program says so on the Your files tab and saves to the default location meanwhile; your setting is kept, so reconnecting the drive is enough |
 
 ## 9. Citing the tool
 

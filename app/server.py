@@ -3,7 +3,7 @@
 """Local server for JAF Rule Bench: serves the interface and runs the model on request.
 Binds to 127.0.0.1 only; nothing leaves the machine."""
 from __future__ import annotations
-import json, os, sys, threading, time, datetime, traceback, socket, webbrowser, csv, io, copy, subprocess, platform
+import base64, json, os, sys, threading, time, datetime, traceback, socket, webbrowser, csv, io, copy, subprocess, platform
 from urllib.parse import urlsplit, parse_qs, unquote, quote
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from jaf.params import Params, PARAM_SPEC, VERSION
@@ -54,19 +54,24 @@ def save_settings(st):
 
 
 _LIB = None
+_LIB_WARNING = ""                     # set when the chosen library is unavailable (review finding, 15.7)
 FILE_LOCK = threading.Lock()          # file operations one at a time (build plan s 15.3, issue 4)
 MAX_UPLOAD = 512 * 1024 ** 2         # s 15.3, issue 8
 
 
 def library():
     """The file library (build plan s 15, F1): the folder for exports and imports."""
-    global _LIB
+    global _LIB, _LIB_WARNING
     want = load_settings().get("library") or default_library()
     if _LIB is None or str(_LIB.root) != str(LIBM.Path(want).expanduser().resolve()):
         try:
             _LIB = LIBM.Library(want)
-        except OSError:                                    # e.g. a removable drive that is not connected
-            _LIB = LIBM.Library(default_library())
+            _LIB_WARNING = ""
+        except (OSError, LIBM.LibraryError):               # e.g. a removable drive that is not connected
+            if _LIB is None or str(_LIB.root) != str(LIBM.Path(default_library()).resolve()):
+                _LIB = LIBM.Library(default_library())
+            _LIB_WARNING = (f"Your chosen library ({want}) is not available, perhaps because its drive is not connected. "
+                            "Until it is, files are saved in the default library shown here. Your setting has not been changed.")
     return _LIB
 
 
@@ -452,13 +457,17 @@ def save_world_bundle(wj):
     return d
 
 
+class BadRequest(ValueError):
+    pass
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "JAFRuleBench/" + VERSION
 
     def log_message(self, fmt, *args):
         pass
 
-    def _send(self, code, body, ctype="application/json; charset=utf-8"):
+    def _send(self, code, body, ctype="application/json; charset=utf-8", csp=None):
         if not isinstance(body, (bytes, str)):
             body = json.dumps(_finite(body), default=_jsonable, allow_nan=False)   # browsers reject Infinity and NaN
         data = body if isinstance(body, bytes) else body.encode("utf-8")
@@ -466,11 +475,27 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
+        self._guard_headers()
+        if csp:
+            self.send_header("Content-Security-Policy", csp)
         self.end_headers()
         self.wfile.write(data)
 
+    def _guard_headers(self):
+        """Other sites may not embed or read the program's responses (review finding 1 and the image oracle)."""
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+        self.send_header("X-Frame-Options", "DENY")
+
+    def _length(self):
+        """The request's Content-Length, refusing a missing sign, text or negative value (review finding 15.7)."""
+        v = (self.headers.get("Content-Length") or "0").strip()
+        if not v.isdigit():
+            raise BadRequest("The request's length is not valid.")
+        return int(v)
+
     def _raw(self):
-        n = int(self.headers.get("Content-Length") or 0)
+        n = self._length()
         return self.rfile.read(n) if n else b""
 
     def _xlsx(self, name, data):
@@ -481,8 +506,17 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers(); self.wfile.write(data)
 
     def _body(self):
-        n = int(self.headers.get("Content-Length") or 0)
-        return json.loads(self.rfile.read(n) or b"{}") if n else {}
+        """The request body as a JSON object; anything else is refused with a message (review finding 10)."""
+        raw = self._raw()
+        if not raw.strip():
+            return {}
+        try:
+            b = json.loads(raw)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            raise BadRequest("The request could not be read (it is not valid JSON).")
+        if not isinstance(b, dict):
+            raise BadRequest("The request could not be read (it is not a JSON object).")
+        return b
 
     def _file_name(self, default="file"):
         return LIBM.safe_name(unquote(self.headers.get("X-File-Name") or default)) or default
@@ -517,7 +551,8 @@ class Handler(BaseHTTPRequestHandler):
                     free = None
                 return self._send(200, {"root": str(lib.root), "default": default_library(), "is_default": str(lib.root) == str(LIBM.Path(default_library()).resolve()),
                                         "files": n, "bytes": size, "free_bytes": free, "busy": tasks_running(),
-                                        "synced": any(x in str(lib.root).lower() for x in LIBM.SYNCED), "undo": lib.last_undoable()})
+                                        "synced": any(x in str(lib.root).lower() for x in LIBM.SYNCED), "undo": lib.last_undoable(),
+                                        "warning": _LIB_WARNING, "chosen": load_settings().get("library") or default_library()})
             if path == "/api/files/raw":
                 p = lib.resolve(one("path"))
                 if not p.is_file():
@@ -530,7 +565,8 @@ class Handler(BaseHTTPRequestHandler):
                 inline = one("inline") == "1" and p.suffix.lower() in (".png", ".jpg", ".jpeg", ".gif")
                 self.send_response(200)
                 self.send_header("Content-Type", ctype)
-                self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("Cache-Control", "no-store")
+                self._guard_headers()
                 self.send_header("Content-Disposition", ("inline" if inline else "attachment") + f"; filename*=UTF-8''{quote(p.name)}")
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers(); self.wfile.write(data)
@@ -599,6 +635,8 @@ class Handler(BaseHTTPRequestHandler):
     def _library_op(self, b):
         global _LIB
         action = b.get("action"); lib = library()
+        if action == "adopt_plan":
+            return self._send(200, dict(LIBM.plan_adopt(str(b.get("target") or "")), applied=False))
         if action == "plan":
             return self._send(200, LIBM.plan_move_library(lib.root, str(b.get("target") or "")))
         if action in ("move", "adopt", "reset") and tasks_running():
@@ -609,7 +647,11 @@ class Handler(BaseHTTPRequestHandler):
                 if res.get("applied"):
                     st = load_settings(); st["library"] = res["target"]; save_settings(st); _LIB = None
                 return self._send(200, res)
+            if action == "adopt_plan":                    # check only; nothing is switched (review finding 1)
+                return self._send(200, dict(LIBM.plan_adopt(str(b.get("target") or "")), applied=False))
             if action == "adopt":
+                if b.get("confirm") is not True:
+                    return self._send(400, {"error": "Check the folder first, then confirm."})
                 res = LIBM.adopt_library(str(b.get("target") or ""))
                 st = load_settings(); st["library"] = res["folder"]; save_settings(st); _LIB = None
                 return self._send(200, dict(res, applied=True))
@@ -630,12 +672,27 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self._host_ok():
             return self._refuse(403, "Requests are accepted only at this computer's own address.")
+        try:
+            return self._get()
+        except Exception as exc:                          # noqa: BLE001
+            traceback.print_exc()
+            try:
+                return self._refuse(500, f"Something went wrong ({type(exc).__name__}).")
+            except OSError:
+                return None
+
+    def _get(self):
         u = urlsplit(self.path)
         if u.path.startswith("/api/files/"):
             return self._files_get(u.path, parse_qs(u.query))
         if self.path in ("/", "/index.html"):
             with open(resource("ui.html"), "rb") as fh:
-                return self._send(200, fh.read(), "text/html; charset=utf-8")
+                html = fh.read()
+            nonce = base64.b64encode(os.urandom(18)).decode("ascii")
+            html = html.replace(b"<script>", f'<script nonce="{nonce}">'.encode("ascii"), 1)
+            csp = (f"default-src 'none'; script-src 'nonce-{nonce}'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
+                   "connect-src 'self'; font-src 'self' data:; form-action 'none'; frame-ancestors 'none'; base-uri 'none'")
+            return self._send(200, html, "text/html; charset=utf-8", csp=csp)
         if self.path == "/api/state":
             return self._send(200, JOB.state())
         if self.path == "/api/result":
@@ -676,8 +733,24 @@ class Handler(BaseHTTPRequestHandler):
             return self._refuse(403, "Requests are accepted only at this computer's own address.")
         if self.headers.get("X-JAF") != "1":
             return self._refuse(403, "Changes are accepted only from the program's own interface.")
-        if int(self.headers.get("Content-Length") or 0) > MAX_UPLOAD:
+        try:
+            n = self._length()
+        except BadRequest as exc:
+            return self._refuse(400, str(exc))
+        if n > MAX_UPLOAD:
             return self._refuse(413, "The file is larger than 512 MB. Move larger collections with 'Move the library', or copy the package file directly.")
+        try:
+            return self._post()
+        except BadRequest as exc:
+            return self._refuse(400, str(exc))
+        except Exception as exc:                          # noqa: BLE001  every request gets an answer (finding 10)
+            traceback.print_exc()
+            try:
+                return self._refuse(500, f"Something went wrong ({type(exc).__name__}). Nothing further was changed.")
+            except OSError:
+                return None
+
+    def _post(self):
         u = urlsplit(self.path)
         if u.path.startswith("/api/files/"):
             return self._files_post(u.path, parse_qs(u.query))
@@ -750,7 +823,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/est/save":
             if not EJOB.results:
                 return self._send(400, {"error": "There are no estimation results to save yet."})
-            return self._send(200, {"folder": save_est_bundle()})
+            with FILE_LOCK:
+                return self._send(200, {"folder": save_est_bundle()})
         if self.path == "/api/world/run":
             b = self._body()
             ok = WJOB.start("run", b.get("params", {}))
@@ -768,14 +842,16 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/world/save":
             if not WJOB.result:
                 return self._send(400, {"error": "There are no coded-world results to save yet."})
-            return self._send(200, {"folder": save_world_bundle(WJOB)})
+            with FILE_LOCK:
+                return self._send(200, {"folder": save_world_bundle(WJOB)})
         if self.path == "/api/cancel":
             JOB.cancel_flag = True
             return self._send(200, {"cancelling": True})
         if self.path == "/api/save":
             if not JOB.result:
                 return self._send(400, {"error": "There are no results to save yet. Run the model first."})
-            return self._send(200, {"folder": save_bundle(JOB.result)})
+            with FILE_LOCK:
+                return self._send(200, {"folder": save_bundle(JOB.result)})
         if self.path == "/api/quit":
             self._send(200, {"bye": True})
             threading.Thread(target=self.server.shutdown, daemon=True).start()

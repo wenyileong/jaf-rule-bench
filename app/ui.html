@@ -234,7 +234,7 @@ const PARAM_PLAIN = {
 const EX = {
   "c-f-browser": { title: "Files in your library",
     what: "Every result the program has saved, and a copy of every workbook or record you have loaded, in one folder on this computer. You can make your own folders and arrange them as you like.",
-    read: "Each saved result is marked with what it is and whether its files are unchanged since the program saved it. ‘Changed since saved’ is normal if you opened and saved a file in Excel; ‘files missing’ means part of it has gone. Moving, copying and the Trash all show what will happen before anything is done, and the last change can be undone.",
+    read: "Each saved result is marked with what it is and whether its files are unchanged since the program saved it. ‘Changed since saved’ is normal if you opened and saved a file in Excel; ‘files missing’ means part of it has gone. Moving, copying and the Trash all show what will happen before anything is done, and the most recent change (one step only) can be undone.",
     means: "Your inputs and outputs stay together and traceable: for any figure in a paper you can find the run that produced it and the workbook that run was based on." },
   "c-f-preview": { title: "Preview",
     what: "The contents of the file or saved result you clicked: a table, text, the sheets of a workbook, an image, or the list of files in a saved result with their fingerprints.",
@@ -246,7 +246,7 @@ const EX = {
     means: "Nothing is lost by a slip of the mouse." },
   "c-f-lib": { title: "Where your library is kept",
     what: "The folder that holds your library, and how to move it or switch to another one.",
-    read: "Check the move first: the program says how many files will go, whether there is room, and any problem. On the same drive the folder is simply renamed. To another drive (or a USB stick) every file is copied and checked against its original before the program switches, and the old folder is left as it was.",
+    read: "Check the move first: the program says how many files will go, whether there is room, and any problem. On the same drive the folder is simply renamed. To another drive (or a USB stick) every file is copied and checked against its original before the program switches, and the old folder is left as it was. ‘Use a library already there’ checks a library you moved earlier (for example on a USB stick), shows what it found, and switches only when you confirm.",
     means: "You can keep your work on an external drive, move it to a new computer, or keep it inside a backed-up folder." },
   "c-f-log": { title: "What has been done",
     what: "A record of every save, import, move, copy, rename, deletion, restore, package and check in this library, newest first.",
@@ -919,7 +919,7 @@ function worldTab(box) {
   box.appendChild(run);
   $("w-run").onclick = async () => { try { await api("/api/world/run", { params: readForm() }); wstart(); } catch (e) { banner(e.message, "warn"); } };
   $("w-cancel").onclick = () => api("/api/world/cancel", {}).catch(() => {});
-  $("w-save").onclick = async () => { try { const r = await api("/api/world/save", {}); banner(`Saved to <span class="mono">${r.folder}</span>`, "warn"); } catch (e) { banner(e.message, "warn"); } };
+  $("w-save").onclick = async () => { try { const r = await api("/api/world/save", {}); banner(`Saved to <span class="mono">${escH(r.folder)}</span>`, "warn"); } catch (e) { banner(e.message, "warn"); } };
   // ---- mismatch map (needs only the coded law)
   const mm = R0 ? R0.mismatch : null;
   if (R0 && JSON.stringify(R0.world.jurisdictions.map(j => [j.code, j.liability_rule])) !== JSON.stringify(w.jurisdictions.map(j => [j.code, j.liability_rule]))) {
@@ -1029,7 +1029,7 @@ async function wpoll() {
   try {
     const st = await api("/api/world/state");
     if ($("w-bar")) { $("w-bar").style.width = (st.progress * 100).toFixed(1) + "%"; $("w-label").textContent = st.running ? `${(st.progress * 100).toFixed(0)}% · ${st.label}` : (st.error || "Done."); $("w-run").disabled = st.running; $("w-cancel").disabled = !st.running; }
-    if (!st.running) { clearInterval(wpolling); wpolling = null; if (st.error) banner(st.error, "warn"); await loadWorld(); if (S.tab === "world") render(); }
+    if (!st.running) { clearInterval(wpolling); wpolling = null; if (st.error) banner(escH(st.error), "warn"); await loadWorld(); if (S.tab === "world") render(); }
   } catch (e) { clearInterval(wpolling); wpolling = null; }
 }
 
@@ -1132,7 +1132,7 @@ function calibTab(box) {
   $("e-est").onclick = () => go("estimate");
   $("e-rec").onclick = () => { const truth = {}; document.querySelectorAll("#e-truth input").forEach(i => { if (i.value !== "") truth[i.dataset.name] = +i.value; }); go("recovery", { reps: +$("e-reps").value, truth: Object.keys(truth).length ? truth : null }); };
   $("e-cancel").onclick = () => api("/api/est/cancel", {}).catch(() => {});
-  $("e-save").onclick = async () => { try { const r = await api("/api/est/save", {}); banner(`Saved to <span class="mono">${r.folder}</span>`, "warn"); } catch (e) { banner(e.message, "warn"); } };
+  $("e-save").onclick = async () => { try { const r = await api("/api/est/save", {}); banner(`Saved to <span class="mono">${escH(r.folder)}</span>`, "warn"); } catch (e) { banner(e.message, "warn"); } };
   const freeNames = (d.params || []).filter(p => p.free).map(p => p.name);
   const tr = document.createElement("details"); tr.className = "tech"; tr.id = "e-truth";
   tr.innerHTML = `<summary>${P("Settings the recovery test should find (optional)", "Recovery truth (optional)")}</summary><p>${freeNames.map(n => `<label>${pLabel(n)} <input class="mini" type="number" step="any" data-name="${n}" placeholder="auto"></label>`).join(" ") || P("No setting is marked for estimation.", "No free parameters.")}</p>`;
@@ -1242,7 +1242,7 @@ async function epoll() {
   try {
     const st = await api("/api/est/state");
     if ($("e-bar")) { $("e-bar").style.width = (st.progress * 100).toFixed(1) + "%"; $("e-label").textContent = st.running ? `${(st.progress * 100).toFixed(0)}% · ${st.label}${st.elapsed ? ` · ${Math.round(st.elapsed)} s` : ""}` : (st.error || "Done."); ["e-ident", "e-est", "e-rec"].forEach(k => $(k).disabled = st.running); $("e-cancel").disabled = !st.running; }
-    if (!st.running) { clearInterval(epolling); epolling = null; S.eMsg = st.error || P(`Done (${st.kind === "identify" ? "identification check" : st.kind === "recovery" ? "recovery test" : "estimation"}).`, `Done: ${st.kind}.`); if (st.error) banner(st.error, "warn"); await loadEst(); if (S.tab === "calib") render(); }
+    if (!st.running) { clearInterval(epolling); epolling = null; S.eMsg = st.error || P(`Done (${st.kind === "identify" ? "identification check" : st.kind === "recovery" ? "recovery test" : "estimation"}).`, `Done: ${st.kind}.`); if (st.error) banner(escH(st.error), "warn"); await loadEst(); if (S.tab === "calib") render(); }
   } catch (e) { clearInterval(epolling); epolling = null; }
 }
 
@@ -1250,9 +1250,9 @@ async function epoll() {
 let FD = null, FLIB = null, FLOG = null, FTRASH = null;
 const escH = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmtB = n => n == null ? "" : n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : n < 1073741824 ? `${(n / 1048576).toFixed(1)} MB` : `${(n / 1073741824).toFixed(2)} GB`;
-const fDate = s => s ? s.replace("T", " ").slice(0, 16) : "";
+const fDate = s => s ? escH(String(s).replace("T", " ").slice(0, 16)) : "";
 const KIND_LABEL = { run: ["Rule comparison", "run"], world: ["Coded-world results", "world"], estimation: ["Estimation results", "estimation"], "coded workbook": ["Loaded workbook", "workbook"], "pre-registration record": ["Pre-registration", "prereg"], file: ["Imported file", "file"], package: ["Package", "package"] };
-const kindChip = k => k ? `<span class="chip accent">${P(...(KIND_LABEL[k] || [k, k]))}</span>` : "";
+const kindChip = k => k ? `<span class="chip accent">${escH(P(...(KIND_LABEL[k] || [k, k])))}</span>` : "";
 const integrityChip = s => s === "ok" ? `<span class="chip ok">${P("intact", "ok")}</span>` : s === "changed" ? `<span class="chip warn">${P("changed since saved", "changed")}</span>` : s === "missing" ? `<span class="chip bad">${P("files missing", "missing")}</span>` : "";
 const fq = p => encodeURIComponent(p || "");
 async function loadFiles(path) {
@@ -1273,7 +1273,7 @@ function planHtml(plan) {
 }
 
 function filesTab(box) {
-  if (!FD) { box.innerHTML = `<p class="note">Loading…</p>`; loadFiles().then(render).catch(e => { box.innerHTML = `<div class="banner bad">${escH(e.message)}</div>`; }); return; }
+  if (!FD) { box.innerHTML = `<p class="note">Loading…</p>`; loadFiles().then(render).catch(e => { box.innerHTML = `<div class="banner bad">${e.message}</div>`; }); return; }
   S.fSel = S.fSel || new Set();
   const intro = document.createElement("div"); intro.className = "start";
   intro.innerHTML = `<h3>${P("Your files", "File manager")}</h3><p>${P(
@@ -1295,7 +1295,7 @@ function filesTab(box) {
     <button id="f-pkg">${P("Package for another computer", "Package")}</button>
     <button id="f-dl">${P("Download", "Download")}</button><button id="f-show">${P("Show in Explorer", "Reveal")}</button>
     <button id="f-chk">${P("Check for changes", "Verify")}</button>
-    <button id="f-undo" ${undo ? "" : "disabled"} title="${undo ? escH(`${undo.op} at ${fDate(undo.time)}`) : ""}">${P("Undo", "Undo")}${undo ? `: ${escH(undo.op.replace("_", " "))}` : ""}</button>
+    <button id="f-undo" ${undo ? "" : "disabled"} title="${undo ? `${P("Undo the most recent change", "Undo last")} (${escH(undo.op)}, ${fDate(undo.time)}). ${P("Only one step can be undone.", "One level.")}` : P("Nothing to undo", "Nothing to undo")}">${P("Undo", "Undo")}${undo ? `: ${escH(undo.op.replace("_", " "))}` : ""}</button>
     <label class="filebtn"><button type="button" class="primary" id="f-imp-btn">${P("Bring in a file or package…", "Import…")}</button><input type="file" id="f-imp" hidden></label></div>`;
   let t = `<div class="scroll"><table id="f-table"><thead><tr><th style="width:28px"><input type="checkbox" id="f-all" aria-label="Select all"></th><th>${P("Name", "Name")}</th><th>${P("What it is", "Kind")}</th><th>${P("Date", "Modified")}</th><th class="num">${P("Size", "Bytes")}</th><th>${P("Check", "Integrity")}</th></tr></thead><tbody>`;
   if (FD.rel) { const up = FD.crumbs[FD.crumbs.length - 2]?.rel ?? ""; t += `<tr><td></td><td colspan="5"><a href="#" data-go="${escH(up)}">↑ ${P("Up one level", "..")}</a></td></tr>`; }
@@ -1345,11 +1345,11 @@ function filesTab(box) {
   $("f-dl").onclick = () => { if (!need()) return; const files = sel().filter(r => FD.entries.find(e => e.rel === r)?.type === "file"); if (!files.length) return banner(P("Downloads are for files. To take a folder or saved result with you, use 'Package for another computer'.", "Folders: package first."), "warn"); files.forEach((r, i) => setTimeout(() => { const a = document.createElement("a"); a.href = `/api/files/raw?path=${fq(r)}`; a.download = ""; document.body.appendChild(a); a.click(); a.remove(); }, i * 400)); };
   $("f-show").onclick = async () => { const r = await fop({ op: "reveal", path: sel()[0] || FD.rel }); if (r && !r.opened) banner(escH(r.error), "warn"); };
   $("f-chk").onclick = async () => { const r = await fop({ op: "verify", path: sel()[0] || FD.rel }); if (r) { banner(r.items.length ? P(`Checked ${r.items.length} saved result(s): ${r.ok} unchanged, ${r.problems} changed or incomplete.`, `Verified ${r.items.length}: ${r.ok} ok, ${r.problems} problems.`) + (r.problems ? `<ul>${r.items.filter(i => i.status !== "ok").map(i => `<li class="mono">${escH(i.item)}: ${i.status}${i.changed.length ? ` (${escH(i.changed.slice(0, 4).join(", "))})` : ""}${i.missing.length ? ` (${P("missing", "missing")}: ${escH(i.missing.slice(0, 4).join(", "))})` : ""}</li>`).join("")}</ul>` : "") : P("There are no saved results with a record of their files here.", "No manifests in scope."), "warn"); refresh(); } };
-  $("f-undo").onclick = async () => { const r = await fop({ op: "undo" }); if (r) { banner(r.undone ? P(`Undone: ${r.op.replace("_", " ")}.`, `Undone: ${r.op}.`) + (r.problems.length ? ` ${escH(r.problems.join(" "))}` : "") : escH(r.note), "warn"); refresh(); } };
+  $("f-undo").onclick = async () => { const r = await fop({ op: "undo" }); if (r) { banner(r.undone ? P(`Undone: ${escH(r.op.replace("_", " "))}.`, `Undone: ${escH(r.op)}.`) + (r.problems.length ? ` ${escH(r.problems.join(" "))}` : "") : escH(r.note), "warn"); refresh(); } };
   $("f-imp-btn").onclick = () => $("f-imp").click();
   $("f-imp").onchange = async e => {
     const f = e.target.files[0]; if (!f) return; const buf = await f.arrayBuffer(); e.target.value = "";
-    const send = async apply => { const r = await fetch(`/api/files/import?apply=${apply ? 1 : 0}`, { method: "POST", headers: { "Content-Type": "application/octet-stream", "X-JAF": "1", "X-File-Name": encodeURIComponent(f.name) }, body: buf }); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || `Import failed (${r.status})`); return j; };
+    const send = async apply => { const r = await fetch(`/api/files/import?apply=${apply ? 1 : 0}`, { method: "POST", headers: { "Content-Type": "application/octet-stream", "X-JAF": "1", "X-File-Name": encodeURIComponent(f.name) }, body: buf }); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(escH(j.error || `Import failed (${r.status})`)); return j; };
     try {
       const r = await send(false);
       const pk = r.kind === "package";
@@ -1358,8 +1358,8 @@ function filesTab(box) {
             : `<p class="note">${P("A copy is kept in Imports, with a record of its fingerprint.", "Stored in Imports with SHA-256.")}</p>`}
         <div class="runrow"><button id="f-go" class="primary" ${pk && !r.intact ? "disabled" : ""}>${P("Bring it in", "Import")}</button><button id="f-x">${P("Cancel", "Cancel")}</button></div></div>`;
       $("f-x").onclick = () => dialog.innerHTML = "";
-      $("f-go").onclick = async () => { try { const a = await send(true); banner(`${P("Brought in to", "Imported to")} <span class="mono">${escH(a.path)}</span>${a.bundle_problems?.length ? ` ${P("but some saved results inside have changed:", "bundle problems:")} ${escH(a.bundle_problems.join(", "))}` : ""}`, "warn"); await loadFiles("Imports"); render(); } catch (err) { banner(escH(err.message), "warn"); } };
-    } catch (err) { banner(escH(err.message), "warn"); }
+      $("f-go").onclick = async () => { try { const a = await send(true); banner(`${P("Brought in to", "Imported to")} <span class="mono">${escH(a.path)}</span>${a.bundle_problems?.length ? ` ${P("but some saved results inside have changed:", "bundle problems:")} ${escH(a.bundle_problems.join(", "))}` : ""}`, "warn"); await loadFiles("Imports"); render(); } catch (err) { banner(err.message, "warn"); } };
+    } catch (err) { banner(err.message, "warn"); }
   };
 
   // ---- preview
@@ -1395,18 +1395,23 @@ function filesTab(box) {
   if ($("f-empty")) $("f-empty").onclick = async () => { const r = await fop({ op: "empty_trash", apply: false }); if (!r) return; if (!confirm(P(`Delete ${r.items} item(s) (${r.files} files, ${fmtB(r.bytes)}) permanently? This cannot be undone.`, `Permanently delete ${r.files} files?`))) return; if (await fop({ op: "empty_trash", apply: true })) refresh(); };
 
   // ---- library location
-  const c4 = card(box, "c-f-lib", P("Where your library is kept", "Library location"), "Move: rename on the same drive; otherwise copy every file, verify each by SHA-256, then switch the setting (the old folder is untouched). Adopt: verify an existing library and switch to it.");
+  const c4 = card(box, "c-f-lib", P("Where your library is kept", "Library location"), "Move: rename on the same drive; otherwise copy every file to a temporary folder, verify each by SHA-256, then rename it into place and switch the setting (the old folder is untouched). Adopt: verify an existing library (a folder with the program's .jaf folder), show the result, and switch only on confirmation.");
   c4.root.querySelector(".tools").hidden = true;
-  c4.host.innerHTML = `<p><span class="mono">${escH(FLIB.root)}</span>${FLIB.is_default ? ` <span class="chip">${P("default", "default")}</span>` : ""}</p>
+  c4.host.innerHTML = `${FLIB.warning ? `<div class="banner bad">${escH(FLIB.warning)}</div>` : ""}<p><span class="mono">${escH(FLIB.root)}</span>${FLIB.is_default ? ` <span class="chip">${P("default", "default")}</span>` : ""}</p>
     <p class="note">${FLIB.files} ${P("files", "files")}, ${fmtB(FLIB.bytes)}${FLIB.free_bytes != null ? ` · ${fmtB(FLIB.free_bytes)} ${P("free on this drive", "free")}` : ""}</p>
     ${FLIB.synced ? `<div class="banner warn">${P("The library is in a synced folder (such as OneDrive). Keep its files available offline.", "Synced folder.")}</div>` : ""}
     <p>${P("New location (the full path of an empty folder, or one that does not exist yet; it can be on another drive or a USB stick):", "Target path:")}<br><input type="text" id="f-target" style="width:min(520px,100%)" placeholder="D:\\Research\\JAF Rule Bench"></p>
     <p><button id="f-lplan">${P("Check the move", "Plan move")}</button> <button id="f-lmove" class="primary" disabled>${P("Move the library", "Move")}</button> <button id="f-ladopt">${P("Use a library already there", "Adopt")}</button> ${FLIB.is_default ? "" : `<button id="f-lreset">${P("Go back to the default location", "Reset")}</button>`}</p><div id="f-lout"></div>
     <p class="note">${P("To take everything to another computer: move the library to a USB drive, then on the other computer choose 'Use a library already there' and give its path. To take only some results, use 'Package for another computer' above.", "Device transfer: move to removable drive then adopt, or package selected items.")}</p>`;
   const tgt = () => $("f-target").value.trim();
-  $("f-lplan").onclick = async () => { try { const r = await api("/api/files/library", { action: "plan", target: tgt() }); $("f-lout").innerHTML = `<p>${P("From", "From")} <span class="mono">${escH(r.source)}</span> ${P("to", "to")} <span class="mono">${escH(r.target)}</span>: ${r.files} ${P("files", "files")}, ${fmtB(r.bytes)}; ${P("method", "method")}: ${escH(r.method)}.</p>${r.warnings.map(w => `<div class="banner warn">${escH(w)}</div>`).join("")}${r.problems.length ? `<div class="banner bad"><ul>${r.problems.map(p => `<li>${escH(p)}</li>`).join("")}</ul></div>` : ""}`; $("f-lmove").disabled = !r.can_apply; } catch (e) { banner(escH(e.message), "warn"); } };
-  $("f-lmove").onclick = async () => { if (!confirm(P("Move the library now? The program will use the new location from now on.", "Move library?"))) return; try { const r = await api("/api/files/library", { action: "move", target: tgt() }); banner(r.applied ? escH(r.note) : escH(r.note || (r.problems || []).join(" ")), "warn"); FD = null; render(); } catch (e) { banner(escH(e.message), "warn"); } };
-  $("f-ladopt").onclick = async () => { if (!tgt()) return banner(P("Type the path of the library folder first.", "Path required."), "warn"); try { const r = await api("/api/files/library", { action: "adopt", target: tgt() }); banner(P(`Now using ${r.folder}: ${r.bundles} saved result(s) checked, ${r.problems} with changes.`, `Adopted: ${r.bundles} bundles, ${r.problems} problems.`), "warn"); FD = null; render(); } catch (e) { banner(escH(e.message), "warn"); } };
+  $("f-lplan").onclick = async () => { try { const r = await api("/api/files/library", { action: "plan", target: tgt() }); $("f-lout").innerHTML = `<p>${P("From", "From")} <span class="mono">${escH(r.source)}</span> ${P("to", "to")} <span class="mono">${escH(r.target)}</span>: ${r.files} ${P("files", "files")}, ${fmtB(r.bytes)}; ${P("method", "method")}: ${escH(r.method)}.</p>${r.warnings.map(w => `<div class="banner warn">${escH(w)}</div>`).join("")}${r.problems.length ? `<div class="banner bad"><ul>${r.problems.map(p => `<li>${escH(p)}</li>`).join("")}</ul></div>` : ""}`; $("f-lmove").disabled = !r.can_apply; } catch (e) { banner(e.message, "warn"); } };
+  $("f-lmove").onclick = async () => { if (!confirm(P("Move the library now? The program will use the new location from now on.", "Move library?"))) return; try { const r = await api("/api/files/library", { action: "move", target: tgt() }); banner(r.applied ? escH(r.note) : escH(r.note || (r.problems || []).join(" ")), "warn"); FD = null; render(); } catch (e) { banner(e.message, "warn"); } };
+  $("f-ladopt").onclick = async () => { if (!tgt()) return banner(P("Type the path of the library folder first.", "Path required."), "warn"); try {
+    const r = await api("/api/files/library", { action: "adopt_plan", target: tgt() });
+    $("f-lout").innerHTML = `<div class="runbox" style="margin:8px 0"><p>${P("Found a library at", "Library at")} <span class="mono">${escH(r.folder)}</span>: ${r.files} ${P("files", "files")}, ${fmtB(r.bytes)}; ${r.bundles} ${P("saved result(s) checked", "bundles verified")}.</p>${r.problems ? `<div class="banner warn">${P(`${r.problems} saved result(s) have changed or have missing files:`, `${r.problems} damaged:`)} ${escH(r.damaged.slice(0, 8).join(", "))}</div>` : `<p><span class="chip ok">${P("every saved result is intact", "all intact")}</span></p>`}<p class="note">${P("Nothing has changed yet. Switching makes the program save to and show this library; the current one stays where it is.", "Not switched yet.")}</p><div class="runrow"><button id="f-adopt-go" class="primary">${P("Switch to this library", "Switch")}</button><button id="f-adopt-x">${P("Cancel", "Cancel")}</button></div></div>`;
+    $("f-adopt-x").onclick = () => $("f-lout").innerHTML = "";
+    $("f-adopt-go").onclick = async () => { try { const a = await api("/api/files/library", { action: "adopt", target: r.folder, confirm: true }); banner(P(`Now using ${escH(a.folder)}.`, `Adopted ${escH(a.folder)}.`), "warn"); FD = null; render(); } catch (e) { banner(e.message, "warn"); } };
+  } catch (e) { banner(e.message, "warn"); } };
   if ($("f-lreset")) $("f-lreset").onclick = async () => { await api("/api/files/library", { action: "reset" }); FD = null; render(); };
 
   // ---- activity
@@ -1414,7 +1419,7 @@ function filesTab(box) {
   c5.root.querySelector(".tools").hidden = true;
   const OPL = { save: "Saved", import: "Brought in", move: "Moved", copy: "Copied", rename: "Renamed", trash: "Moved to Trash", restore: "Restored", empty_trash: "Emptied the Trash", undo: "Undid", package: "Packaged", import_package: "Brought in a package", verify: "Checked", make_folder: "New folder", move_library: "Moved the library", adopt_library: "Started using a library" };
   const desc = r => r.path || r.to || (r.moves ? r.moves.map(m => m[0]).slice(0, 3).join(", ") + (r.moves.length > 3 ? "…" : "") : "") || r.scope || "";
-  c5.host.innerHTML = FLOG.items.length ? `<div class="scroll" style="max-height:320px"><table><tbody>${FLOG.items.slice(0, 60).map(r => `<tr><td class="note">${fDate(r.time)}</td><td>${P(OPL[r.op] || r.op, r.op)}${r.op === "undo" ? ` ${escH(r.undone_op)}` : ""}${r.undone ? ` <span class="chip">${P("undone", "undone")}</span>` : ""}</td><td class="mono note">${escH(desc(r))}</td></tr>`).join("")}</tbody></table></div>` : `<p class="note">${P("Nothing yet.", "Empty.")}</p>`;
+  c5.host.innerHTML = FLOG.items.length ? `<div class="scroll" style="max-height:320px"><table><tbody>${FLOG.items.slice(0, 60).map(r => `<tr><td class="note">${fDate(r.time)}</td><td>${escH(P(OPL[r.op] || r.op, r.op))}${r.op === "undo" ? ` ${escH(r.undone_op)}` : ""}${r.undone ? ` <span class="chip">${P("undone", "undone")}</span>` : ""}</td><td class="mono note">${escH(desc(r))}</td></tr>`).join("")}</tbody></table></div>` : `<p class="note">${P("Nothing yet.", "Empty.")}</p>`;
 }
 /* ================= reading mode ================= */
 function applyMode() {
@@ -1450,7 +1455,7 @@ $("reset").onclick = () => buildForm(DEFAULTS);
 /* ================= server calls ================= */
 async function api(path, body) {
   const r = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json", "X-JAF": "1" }, body: JSON.stringify(body) });
-  const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.message || j.error || `Request failed (${r.status})`); return j;
+  const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(escH(j.message || j.error || `Request failed (${r.status})`)); return j;
 }
 function banner(msg, kind = "bad") { $("banner").innerHTML = msg ? `<div class="banner ${kind}" style="margin-bottom:14px">${msg}</div>` : ""; }
 function statusLine() { $("status").textContent = DATA?.generated ? `Showing run of ${DATA.generated.replace("T", " ")}${DATA.sweep ? ` · ${DATA.sweep.n} sweep draws` : ""}` : "No results"; }
@@ -1461,12 +1466,12 @@ async function poll() {
     $("bar").style.width = (st.progress * 100).toFixed(1) + "%";
     $("prog-label").textContent = st.running ? `${(st.progress * 100).toFixed(0)}% · ${st.label}${st.elapsed ? ` · ${Math.round(st.elapsed)} s` : ""}` : (st.error || "Ready.");
     $("run").disabled = st.running; $("cancel").disabled = !st.running;
-    if (!st.running) { clearInterval(polling); polling = null; if (!st.error) { DATA = await api("/api/result"); statusLine(); render(); banner(""); } else banner(st.error, "warn"); }
+    if (!st.running) { clearInterval(polling); polling = null; if (!st.error) { DATA = await api("/api/result"); statusLine(); render(); banner(""); } else banner(escH(st.error), "warn"); }
   } catch (e) { clearInterval(polling); polling = null; banner("The engine is not responding. If you closed its window, start JAF Rule Bench again."); }
 }
 $("run").onclick = async () => { try { await api("/api/run", { params: readForm(), sweep: +$("sweep-n").value }); banner(""); if (!polling) polling = setInterval(poll, 700); poll(); } catch (e) { banner(e.message, "warn"); } };
 $("cancel").onclick = () => api("/api/cancel", {}).catch(() => {});
-$("save").onclick = async () => { try { const r = await api("/api/save", {}); banner(`Saved to <span class="mono">${r.folder}</span>`, "warn"); } catch (e) { banner(e.message, "warn"); } };
+$("save").onclick = async () => { try { const r = await api("/api/save", {}); banner(`Saved to <span class="mono">${escH(r.folder)}</span>`, "warn"); } catch (e) { banner(e.message, "warn"); } };
 $("quit").onclick = async () => { try { await api("/api/quit", {}); } catch (e) {} banner("The engine has stopped. You can close this tab.", "warn"); $("run").disabled = true; };
 
 (async function init() {

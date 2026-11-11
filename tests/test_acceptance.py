@@ -319,7 +319,7 @@ check("40 review 7: parameter values outside what the model admits, reversed or 
       and any("both ends" in x for x in e40), f"{len(e40)} errors")
 
 # ---- version 1.1: file library (build plan s 15) ------------------------------------------------
-import tempfile, zipfile, threading, http.client
+import tempfile, zipfile, threading, http.client, re, os, hashlib
 from pathlib import Path
 from jaf import library as LIBM
 from jaf.library import Library, LibraryError
@@ -468,11 +468,149 @@ st_host, _ = req("GET", "/api/files/list", headers={"Host": "attacker.example"})
 st_load, d_load = req("POST", "/api/world/load", write_template(kind="illustrative"), {"X-JAF": "1", "X-File-Name": "my%20coding.xlsx"})
 st_list, d_list = req("GET", "/api/files/list?path=Imports")
 st_trav, _ = req("GET", "/api/files/raw?path=..%2F..%2Fetc%2Fpasswd")
-httpd.shutdown()
 imports = [e["name"] for e in json.loads(d_list)["entries"]] if st_list == 200 else []
 check("50 the server refuses changes without the interface's header and requests for other host names; loads are recorded in Imports; traversal is refused",
       st_noheader == 403 and st_host == 403 and st_load == 200 and json.loads(d_load)["recorded"] and len(imports) == 1
       and imports[0].endswith("my coding") and st_trav == 400, f"{st_noheader} {st_host} {st_load} {st_trav} {imports}")
+
+# ---- version 1.1: independent review findings (build plan s 15.7) ---------------------------------------
+J = {"X-JAF": "1", "Content-Type": "application/json"}
+c51 = http.client.HTTPConnection("127.0.0.1", port, timeout=60); c51.request("GET", "/", headers={"Host": f"127.0.0.1:{port}"})
+r51 = c51.getresponse(); html51 = r51.read().decode("utf-8"); csp = r51.getheader("Content-Security-Policy") or ""; c51.close()
+m51 = re.search(r"'nonce-([^']+)'", csp)
+nonce_ok = bool(m51) and f'<script nonce="{m51.group(1)}">' in html51 and html51.count("<script") == 1
+c51 = http.client.HTTPConnection("127.0.0.1", port, timeout=60); c51.request("GET", "/api/files/list", headers={"Host": f"127.0.0.1:{port}"})
+r51b = c51.getresponse(); r51b.read(); corp = r51b.getheader("Cross-Origin-Resource-Policy"); c51.close()
+ui_src = open("app/ui.html", encoding="utf-8").read()
+escaped = ("throw new Error(escH(" in ui_src and "const fDate = s => s ? escH(" in ui_src and "${escH(P(...(KIND_LABEL" in ui_src
+           and "onclick=\"" not in ui_src and "onerror=" not in ui_src)
+check("51 review 1: the page runs only its own script (nonce CSP), other sites cannot read its responses, and text from files is escaped",
+      nonce_ok and "script-src 'nonce-" in csp and "frame-ancestors 'none'" in csp and corp == "same-origin" and escaped, csp[:60])
+
+st_arr, _ = req("POST", "/api/files/op", b"[1, 2]", J)
+st_bad, _ = req("POST", "/api/files/op", b"{not json", J)
+st_neg, d_neg = req("POST", "/api/files/op", b"", {"X-JAF": "1", "Content-Length": "-5"})
+st_txt, _ = req("POST", "/api/files/op", b"", {"X-JAF": "1", "Content-Length": "abc"})
+st_opk, _ = req("POST", "/api/files/op", json.dumps({"op": "verify"}).encode(), J)
+check("52 review 10: a body that is not a JSON object, or an invalid length, gets a clear refusal rather than no answer; the server keeps serving",
+      (st_arr, st_bad, st_neg, st_txt, st_opk) == (400, 400, 400, 400, 200), f"{st_arr} {st_bad} {st_neg} {st_txt} {st_opk}")
+
+other = T / "otherlib"; Library(other); _bundle(Library(other), "world")
+st_plan, d_plan = req("POST", "/api/files/library", json.dumps({"action": "adopt_plan", "target": str(other)}).encode(), J)
+_, d_lib1 = req("GET", "/api/files/library")
+st_nc, _ = req("POST", "/api/files/library", json.dumps({"action": "adopt", "target": str(other)}).encode(), J)
+(T / "plain").mkdir()
+st_plain, _ = req("POST", "/api/files/library", json.dumps({"action": "adopt_plan", "target": str(T / "plain")}).encode(), J)
+st_yes, d_yes = req("POST", "/api/files/library", json.dumps({"action": "adopt", "target": str(other), "confirm": True}).encode(), J)
+_, d_lib2 = req("GET", "/api/files/library")
+plan_ok = st_plan == 200 and json.loads(d_plan)["bundles"] == 1 and json.loads(d_lib1)["root"] != str(other.resolve())
+check("53 review 1: using another library is checked first and switches only on confirmation, and only a folder that is already a library",
+      plan_ok and st_nc == 400 and st_plain == 400 and st_yes == 200 and json.loads(d_lib2)["root"] == str(other.resolve()),
+      f"{st_plan} {st_nc} {st_plain} {st_yes}")
+
+S2.save_settings({"library": str(T / "unplugged" / "JAF")}); S2._LIB = None
+_, d_gone = req("GET", "/api/files/library"); gone = json.loads(d_gone)
+kept = S2.load_settings().get("library") == str(T / "unplugged" / "JAF")
+try:
+    Library(T / "nodrive" / "deeper" / "JAF"); made = True
+except LibraryError:
+    made = False
+check("54 review: a library on a drive that is not connected is reported, the setting is kept, and no folder is created in its place",
+      bool(gone["warning"]) and kept and not made and not (T / "unplugged").exists() and gone["root"] == str((T / "srvlib").resolve()))
+httpd.shutdown()
+
+L4 = Library(T / "lib4")
+for f in ("A", "B"):
+    L4.make_folder("", f); (L4.root / f / "notes.txt").write_text(f, encoding="utf-8")
+L4.trash(["A/notes.txt", "B/notes.txt"], apply=True)
+L4.make_folder("", "C"); (L4.root / "C" / "notes.txt").write_text("C", encoding="utf-8")
+L4.trash(["C/notes.txt"], apply=True)
+tl = L4.trash_list()
+L4.restore([i["rel"] for i in tl])
+back = {f: (L4.root / f / "notes.txt").read_text(encoding="utf-8") if (L4.root / f / "notes.txt").exists() else None for f in "ABC"}
+check("55 review 2: items with the same name in the Trash keep their own origins and are each restored to the right place",
+      len(tl) == 3 and back == {"A": "A", "B": "B", "C": "C"}, f"{back}")
+
+pk2 = L4.make_package(["A/notes.txt", "B/notes.txt", "C"], "same names")
+L5 = Library(T / "lib5")
+imp5 = L5.import_package((L4.root / pk2["path"]).read_bytes(), apply=True)
+got = sorted(p.relative_to(L5.resolve(imp5["path"])).as_posix() for p in LIBM.walk_files(L5.resolve(imp5["path"])))
+evil = io.BytesIO()
+with zipfile.ZipFile(evil, "w") as z:
+    z.writestr("items/001/a/x.txt", "1"); z.writestr("items/001/a/X.txt", "2")
+    z.writestr("package.json", json.dumps({"files": [{"path": "001/a/x.txt", "sha256": hashlib.sha256(b"1").hexdigest()},
+                                                     {"path": "001/a/X.txt", "sha256": hashlib.sha256(b"2").hexdigest()}]}))
+ev = L5.import_package(evil.getvalue(), apply=True)
+check("56 review 3: items with the same name are all kept when a package is unpacked; names that would clash on Windows or macOS are refused",
+      got == ["C/notes.txt", "notes (2).txt", "notes.txt"] and not ev["applied"] and any("clash" in x for x in ev["problems"]), f"{got}")
+
+L4.make_folder("", "D"); (L4.root / "D" / "f.txt").write_text("d")
+L4.transfer(["D/f.txt"], "A", copy=True, apply=True)
+u1 = L4.undo(); u2 = L4.undo()
+copy_gone = not (L4.root / "A" / "f.txt").exists() and (L4.root / "D" / "f.txt").exists()
+L4.transfer(["D/f.txt"], "A", apply=True); L4.transfer(["A/f.txt"], "B", apply=True)
+L4.undo(); u3 = L4.undo()
+check("57 review 4: undo goes back one step only; undoing a copy moves the copies to the Trash, and a second undo does nothing",
+      u1["undone"] and u1["op"] == "copy" and copy_gone and not u2["undone"] and not u3["undone"] and (L4.root / "A" / "f.txt").exists())
+
+(L4.root / "D" / "g.txt").write_text("g"); (L4.root / "D" / "h.txt").write_text("h")
+_mv = LIBM.shutil.move; calls = []
+def flaky(a, b):
+    calls.append(a)
+    if len(calls) == 2:
+        raise OSError("file in use")
+    return _mv(a, b)
+LIBM.shutil.move = flaky
+try:
+    L4.transfer(["D/g.txt", "D/h.txt"], "C", apply=True); stopped = False
+except LibraryError as exc:
+    stopped = "1 of 2" in str(exc)
+finally:
+    LIBM.shutil.move = _mv
+last = L4.history(1)[0]
+u58 = L4.undo()
+check("58 review 5: an operation that stops partway is recorded, says what was done, and can be undone",
+      stopped and last.get("partial") and len(last["moves"]) == 1 and u58["undone"] and (L4.root / "D" / "g.txt").exists())
+
+outside = T / "outside"; outside.mkdir(); (outside / "secret.txt").write_text("s")
+os.symlink(outside, L4.root / "D" / "link")
+try:
+    L4.resolve("D/link/secret.txt"); refused = False
+except LibraryError:
+    refused = True
+pk59 = L4.make_package(["D"], "with link")
+with zipfile.ZipFile(L4.root / pk59["path"]) as z:
+    leaked = any("secret" in n for n in z.namelist())
+types = {e["name"]: e["type"] for e in L4.listing("D")["entries"]}
+check("59 review 6: links are not followed: a path through one is refused, and packages, copies and listings leave them out",
+      refused and not leaked and types.get("link") == "link")
+
+bad59 = []
+for r in (".jaf/log.jsonl", ".jaf/trash", ".jaf/tmp"):
+    if L4.restore([r])["restored"]:
+        bad59.append(r)
+p1 = L4.make_package(["Packages"], "first"); p2 = L4.make_package(["Packages"], "second")
+with zipfile.ZipFile(L4.root / p2["path"]) as z:
+    inner = [n for n in z.namelist() if n.startswith("items/")]
+check("60 review 7 and 8: only items in the Trash can be restored; packaging the Packages folder never includes the package being made",
+      not bad59 and all("second" not in n for n in inner) and any("first" in n for n in inner), f"{inner}")
+
+src61 = T / "lib6"; L6 = Library(src61); _bundle(L6, "run")
+(T / "usb2").mkdir(); (T / "usb2" / "JAF.partial").mkdir(); (T / "usb2" / "JAF.partial" / "junk").write_text("x")
+_same, _cp = LIBM.same_device, LIBM.shutil.copy2
+LIBM.same_device = lambda a, b: False
+LIBM.shutil.copy2 = lambda a, b: (_ for _ in ()).throw(OSError("disk removed"))
+try:
+    f61 = LIBM.move_library(src61, str(T / "usb2" / "JAF"), apply=True)
+    clean61 = not (T / "usb2" / "JAF").exists() and not (T / "usb2" / "JAF.partial").exists()
+    LIBM.shutil.copy2 = _cp
+    r61 = LIBM.move_library(src61, str(T / "usb2" / "JAF"), apply=True)
+finally:
+    LIBM.same_device, LIBM.shutil.copy2 = _same, _cp
+check("61 review 9: a failed copy of the library removes its unfinished copy and leaves the old folder, so trying again works",
+      not f61["applied"] and clean61 and r61["applied"] and not (T / "usb2" / "JAF.partial").exists()
+      and Library(T / "usb2" / "JAF").verify()["problems"] == 0 and src61.exists(),
+      f"{f61['applied']} {(T / 'usb2' / 'JAF').exists()} {r61['applied']} {r61.get('note')} {(T / 'usb2' / 'JAF.partial').exists()}")
 shutil.rmtree(T, ignore_errors=True)
 
 print(f"\n{sum(results)}/{len(results)} passed")

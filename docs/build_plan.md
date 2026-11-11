@@ -449,4 +449,26 @@ The A-share software's data-folder modules (`files.py`, `datafolder.py`) set the
 
 The Windows build's smoke test also saves a bundle, checks it is listed as intact, packages and downloads it, and confirms that a change without the interface's header is refused.
 
+### 15.6 Independent review
+
+After tests 41 to 50 passed, a separate reviewer who had not seen the build examined the library, the server and the interface. Its confirmed findings, and how each was fixed, are in 15.7. Plausible findings (risks the reviewer could not confirm but which were cheap to remove) were fixed as well.
+
+### 15.7 Review findings and fixes
+
+| No. | Finding | Fix | Test |
+|---|---|---|---|
+| 1 | Text from a manifest, package index or error message reached the page unescaped, so a crafted file could run script in the interface; "use a library already there" switched to any folder at once | Every value from files and the server is escaped; the page carries a Content-Security-Policy that admits only its own script (a fresh nonce per load); responses carry `Cross-Origin-Resource-Policy: same-origin`, `nosniff` and `frame-ancestors 'none'`; adopting is two steps (check, then confirm) and only for a folder that already holds the program's `.jaf` folder | 51, 53 |
+| 2 | Two items with the same name moved to the Trash overwrote each other's record of where they came from | Each item has its own slot in the Trash, with an index per batch | 44, 55 |
+| 3 | A package could lose files when two items had the same name, or names differed only in case | Items are numbered inside the package and given free names on unpacking ("x", "x (2)"); names that would clash on Windows or macOS are refused before anything is unpacked; hashes are checked again after unpacking, in a temporary folder | 46, 56 |
+| 4 | Undoing twice redid a copy, and undo walked back further than one step | One level only: an undo, or any change that cannot be undone, ends the chain; undoing a copy moves the copies to the Trash | 57 |
+| 5 | An operation that stopped partway (a file open elsewhere) left no record | What was done is logged, marked partial, and can be undone; the message says how many items were done | 58 |
+| 6 | Links (symbolic links, junctions) were followed, so a link could expose or alter files outside the library | A path through a link is refused; links are skipped by listings, copies, packages, hashing and library moves | 59 |
+| 7 | Restore accepted any path inside the program's own folder | Only an item at the exact depth of a Trash slot can be restored | 60 |
+| 8 | Packaging the Packages folder included the package being written | The package is written to a temporary folder first and moved into Packages when complete | 60 |
+| 9 | A failed copy of the library left an unfinished copy that blocked a second attempt | The copy goes to `<target>.partial`, is verified, and is renamed into place; on failure the partial copy is removed | 61 |
+| 10 | A request body that was not a JSON object left the browser without an answer | The body must be a JSON object; every request gets an answer (400 with a message, or 500); a missing, negative or non-numeric length is refused | 52 |
+| P | Plausible: a library on an unplugged drive silently became the default; saves were not serialised with file operations; case-insensitive name clashes; reserved names such as `CONIN$`; whole package entries read into memory; emptying the Trash logged a full deletion when items remained; misleading wording on adopt and undo | The unavailable library is reported and the setting kept (no folder is created in its place); saves run under the file lock; names are compared without regard to case; the reserved list is extended; hashes are streamed; emptying reports what is left; wording corrected in the interface and the user guide | 54 and above |
+
+All 61 acceptance tests pass. The interface was checked in a browser in both reading modes and both colour schemes, with no script errors and no breach of the security policy; a file named, and a manifest filled, with markup were shown as text.
+
 The model is unchanged from 1.0. The version stamp in the bundled default results was changed from 1.0 to 1.1 without re-running them, since every number is the same.
