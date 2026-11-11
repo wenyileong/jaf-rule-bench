@@ -384,5 +384,5 @@ The reviewer found the measurement definitions, the χ² tail (agreeing with a r
 ### 14.8 What remains outside 1.0
 
 - **Licence:** not yet chosen; until then all rights are reserved.
-- **Test on a Windows machine:** the executable has been built and smoke-tested under Wine only.
+- **Test on a Windows machine:** from 1.0.0 the executable is built, and the acceptance tests and a smoke test are run, on GitHub's Windows runners (Windows Server). A run on a Windows desktop by a user remains advisable.
 - **The empirical piece:** coding and verifying the real sample; collecting data for the India 2022 and CARF designs; freezing and depositing the pre-registration before data access; estimation and validation. Section 14.4, items 3 and 4, should inform its design.

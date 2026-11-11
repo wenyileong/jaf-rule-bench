@@ -16,7 +16,7 @@ A research tool accompanying the paper *Jurisdictional Assignment Functions* (SS
 ## Getting started
 
 ### Windows (no installation)
-Download `JAF_Rule_Bench.exe` from the [Releases](../../releases) page and double-click it. The interface opens in your web browser and runs entirely on your computer. The program is unsigned, so Windows may warn that it is unrecognised: choose "More info", then "Run anyway".
+Download `JAF_Rule_Bench_<version>_windows.zip` from the [Releases](../../releases) page, unzip it and double-click `JAF_Rule_Bench.exe` (read `READ_ME_FIRST.txt` first). The interface opens in your web browser and runs entirely on your computer. The program is not code-signed, so Windows may warn that it is unrecognised: choose "More info", then "Run anyway". Each release lists the SHA-256 checksums of its files.
 
 ### From source (any system)
 Requires Python 3.10 or later.
@@ -63,7 +63,7 @@ Cite the archived version used, with its DOI (each version is deposited on Zenod
 
 GitHub's "Cite this repository" button (from `CITATION.cff`) gives other formats.
 
-## Development and AI assistance
+## Acknowledgements
 
 The code and documentation were developed with the assistance of Claude, an AI system made by Anthropic, under the author's direction. The author specified the model, reviewed the logic and results, and is responsible for the content.
 
