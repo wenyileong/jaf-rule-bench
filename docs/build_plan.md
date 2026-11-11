@@ -386,3 +386,67 @@ The reviewer found the measurement definitions, the χ² tail (agreeing with a r
 - **Licence:** not yet chosen; until then all rights are reserved.
 - **Test on a Windows machine:** from 1.0.0 the executable is built, and the acceptance tests and a smoke test are run, on GitHub's Windows runners (Windows Server). A run on a Windows desktop by a user remains advisable.
 - **The empirical piece:** coding and verifying the real sample; collecting data for the India 2022 and CARF designs; freezing and depositing the pre-registration before data access; estimation and validation. Section 14.4, items 3 and 4, should inform its design.
+
+---
+
+## 15. Version 1.1: file manager (exports, imports, transfers)
+
+### 15.1 Purpose
+
+The author asked for a file manager modelled on the A-share Company Intelligence software: one place that shows every export and import, and lets files be moved between folders and carried from one device to another. Until now the program saved bundles into Documents/JAF Rule Bench with no index, kept no record of what was loaded, and offered no way to move, check or share files from within the program.
+
+The A-share software's data-folder modules (`files.py`, `datafolder.py`) set the principles adopted here: a dry run before any change; nothing deleted without an explicit, separate step; copies verified by hash; every operation recorded; the last operation undoable; the old folder left untouched after a copy to another drive; a warning for synced folders.
+
+### 15.2 Components
+
+| # | Component | What it does |
+|---|---|---|
+| F1 | Library (scaffolding) | One folder (default Documents/JAF Rule Bench) with `Exports/`, `Imports/`, `Packages/` and the user's own folders; a program folder `.jaf/` holds the log, the Trash and undo records. The location is a setting, kept in the program's settings file |
+| F2 | Manifests (scaffolding) | Every bundle the program saves carries `manifest.json`: kind, title, time, tool version, and the size and SHA-256 of every file. Integrity is shown in the list (sizes) and checked in full on request (hashes) |
+| F3 | Request guard (scaffolding) | The local server accepts requests only for its own address (against DNS rebinding) and changes only on requests carrying the interface's own header (against other web pages posting to it) |
+| F4 | Import record | A copy of every workbook or pre-registration record loaded, with its hash, kept in `Imports/`, so the inputs of every result can be found later |
+| F5 | File operations | New folder, rename, move, copy, move to Trash, restore, empty Trash; each move, copy and Trash has a dry run; undo of the last operation; log of all operations |
+| F6 | Preview | Tables (CSV), text and JSON, workbooks (each sheet's first rows), images, bundle manifests and packages, inside the program |
+| F7 | Device to device | A package (`.jafpack`, a zip with an index of SHA-256 hashes) of any chosen items, downloadable through the browser; import of a package (checked for unsafe paths, links and size, and verified by hash before anything is extracted) |
+| F8 | Moving or adopting the library | Move the whole library to another folder or drive (rename on the same drive; otherwise copy, verify every file, then switch; the old folder is untouched), or adopt a library copied from another device (verified, then used) |
+| F9 | Interface | A "Your files" tab: folder path, file list with integrity, preview, toolbar, Trash, activity log, library location; plain and technical explanations |
+
+### 15.3 Logical evaluation (before building)
+
+| # | Issue | Severity | Resolution |
+|---|---|---|---|
+| 1 | **Other web pages can send requests to a local server.** A malicious page could post to 127.0.0.1 and move or delete files; through DNS rebinding it could also read them | Serious (would be fatal for a file manager) | F3: the server checks the Host header on every request and requires a custom header on every change (browsers cannot send it across sites without permission the server never gives). Applied to all endpoints, not only the new ones |
+| 2 | **Paths outside the library.** A crafted path (`..`, an absolute path, a drive letter) could reach any file | Serious | Every path is resolved and refused unless it lies inside the library; the program's own folder is refused except for the Trash |
+| 3 | **Unsafe packages.** A package from elsewhere could write outside the library (zip slip), hold links, or expand to fill the disk | Serious | Packages are inspected before extraction: absolute paths, `..`, links, more than 20,000 files or 2 GB are refused; every file is verified against the index; nothing is extracted unless all checks pass |
+| 4 | **Moving the library while a task runs or saves** | Moderate | Library moves and file operations are refused while a task runs; operations are serialised by a lock |
+| 5 | **Undo after later changes.** Undoing an old operation after others could misplace files | Moderate | Only the most recent undoable operation can be undone; emptying the Trash or moving the library ends the undo chain; undo never overwrites an occupied path |
+| 6 | **Lost files.** Deleting or a failed copy could lose work | Moderate | Delete moves to the Trash with its origin recorded; only "Empty Trash", with its own confirmation, deletes; a copy to another drive is verified file by file before the setting switches |
+| 7 | **Synced folders and placeholders** | Minor | A warning when the target is OneDrive, Dropbox, Google Drive or iCloud |
+| 8 | **Large uploads held in memory** | Minor | Uploads above 512 MB are refused with a message; larger transfers go by moving the library or by copying the package file directly |
+| 9 | **Edited exports reported as damaged.** A user who opens and saves a CSV in Excel changes it | Not a flaw | Reported as "changed", not as an error; the manifest shows what was saved |
+| 10 | **Old bundles** saved by 1.0 at the top of the folder, without manifests | Minor | Listed as ordinary folders; nothing is moved automatically |
+
+**Verdict.** No fatal flaw, provided the request guard (issue 1) and path confinement (issues 2 and 3) are built first, as scaffolding, before any operation that changes files.
+
+### 15.4 Build order
+
+1. Scaffolding: the library and its settings (F1), manifests (F2), the request guard (F3); saves routed through the library.
+2. Features: import record (F4), operations with dry run, Trash and undo (F5), preview (F6), packages (F7), library move and adoption (F8), interface (F9).
+3. Tests, then an independent review, then fixes.
+
+### 15.5 Acceptance tests added for 1.1
+
+- 41: a saved bundle is intact against its manifest; a change that keeps the size is caught by the full SHA-256 check.
+- 42: every path outside the library (`..`, absolute paths, drive letters, home-relative paths) and the program's own folder are refused.
+- 43: copy has a dry run that changes nothing; copies are verified; a taken name becomes "name (2)"; a folder cannot be moved into itself; the standard folders stay.
+- 44: the Trash keeps each item's origin; undo restores; emptying is a separate step and ends the undo chain.
+- 45: names are made valid on every system (a reserved Windows name such as CON is changed); a taken name is refused; undo restores; standard folders keep their names.
+- 46: a package carried to a second library arrives intact (hashes equal); a tampered package, a package with an unsafe path and a file that is not a package are refused, and nothing is extracted.
+- 47: moving the library is refused into itself or a non-empty folder; the dry run changes nothing; on the same drive it renames; to another drive it copies, verifies and leaves the old folder.
+- 48: adopting a library checks every saved result first.
+- 49: imports are kept with their fingerprint; tables and workbooks preview; a damaged file is reported, not fatal.
+- 50: the server refuses changes without the interface's header and requests for other host names; loads are recorded in Imports; traversal through the server is refused.
+
+The Windows build's smoke test also saves a bundle, checks it is listed as intact, packages and downloads it, and confirms that a change without the interface's header is refused.
+
+The model is unchanged from 1.0. The version stamp in the bundled default results was changed from 1.0 to 1.1 without re-running them, since every number is the same.

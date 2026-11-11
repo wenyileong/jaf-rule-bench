@@ -3,7 +3,8 @@
 """Local server for JAF Rule Bench: serves the interface and runs the model on request.
 Binds to 127.0.0.1 only; nothing leaves the machine."""
 from __future__ import annotations
-import json, os, sys, threading, time, datetime, traceback, socket, webbrowser, csv, io, copy
+import json, os, sys, threading, time, datetime, traceback, socket, webbrowser, csv, io, copy, subprocess, platform
+from urllib.parse import urlsplit, parse_qs, unquote, quote
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from jaf.params import Params, PARAM_SPEC, VERSION
 from jaf import report
@@ -15,6 +16,7 @@ from jaf import estimate as EST
 from jaf import recovery as REC
 from jaf import prereg as PRE
 from jaf.measure import QUANTITIES
+from jaf import library as LIBM
 
 
 def resource(name):
@@ -31,11 +33,49 @@ def data_dir():
     return d
 
 
-def export_dir():
+def default_library():
     docs = os.path.join(os.path.expanduser("~"), "Documents")
     base = docs if os.path.isdir(docs) else os.path.expanduser("~")
-    d = os.path.join(base, "JAF Rule Bench"); os.makedirs(d, exist_ok=True)
-    return d
+    return os.path.join(base, "JAF Rule Bench")
+
+
+def load_settings():
+    try:
+        with open(os.path.join(data_dir(), "settings.json"), encoding="utf-8") as fh:
+            d = json.load(fh)
+        return d if isinstance(d, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def save_settings(st):
+    with open(os.path.join(data_dir(), "settings.json"), "w", encoding="utf-8") as fh:
+        json.dump(st, fh, indent=1)
+
+
+_LIB = None
+FILE_LOCK = threading.Lock()          # file operations one at a time (build plan s 15.3, issue 4)
+MAX_UPLOAD = 512 * 1024 ** 2         # s 15.3, issue 8
+
+
+def library():
+    """The file library (build plan s 15, F1): the folder for exports and imports."""
+    global _LIB
+    want = load_settings().get("library") or default_library()
+    if _LIB is None or str(_LIB.root) != str(LIBM.Path(want).expanduser().resolve()):
+        try:
+            _LIB = LIBM.Library(want)
+        except OSError:                                    # e.g. a removable drive that is not connected
+            _LIB = LIBM.Library(default_library())
+    return _LIB
+
+
+def export_dir():
+    return str(library().root)
+
+
+def tasks_running():
+    return bool((JOB and JOB.running) or (WJOB and WJOB.running) or (EJOB and EJOB.running))
 
 
 class Job:
@@ -329,8 +369,8 @@ def est_payload():
 
 
 def save_est_bundle():
-    stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
-    dd = os.path.join(export_dir(), f"estimation_{stamp}"); os.makedirs(dd, exist_ok=True)
+    lib = library()
+    folder = lib.new_export("estimation"); dd = str(folder)
     with open(os.path.join(dd, "estimation_results.json"), "w", encoding="utf-8") as fh:
         json.dump(dict(version=VERSION, results=EJOB.results, design=WJOB.design.to_dict() if WJOB.design else None,
                        prereg=EJOB.record), fh, indent=1, default=_jsonable)
@@ -353,7 +393,16 @@ def save_est_bundle():
     if WJOB.world is not None:
         with open(os.path.join(dd, "world_and_design.xlsx"), "wb") as fh:
             fh.write(write_template(WJOB.world, design=WJOB.design))
+    lib.finish_export(folder, "estimation", "Estimation results", **_provenance())
     return dd
+
+
+def _provenance():
+    """What a saved bundle was made from (build plan s 15, F2)."""
+    from jaf.design import world_fingerprint
+    w = WJOB.world if WJOB else None
+    return dict(world_label=w.settings.label if w else None, world_fingerprint=world_fingerprint(w) if w else None,
+                design_label=(WJOB.design.label if WJOB and WJOB.design else None))
 
 
 JOB = None
@@ -362,8 +411,8 @@ EJOB = None
 
 
 def save_bundle(res):
-    stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
-    d = os.path.join(export_dir(), f"run_{stamp}"); os.makedirs(d, exist_ok=True)
+    lib = library()
+    folder = lib.new_export("run"); d = str(folder)
     with open(os.path.join(d, "results.json"), "w", encoding="utf-8") as fh:
         json.dump(res, fh, indent=1)
     rows = [["rule", "concept", "effective_rate", "mean_nominal_rate", "revenue", "gap", "overlap", "unobserved", "exit", "converged"]]
@@ -375,13 +424,14 @@ def save_bundle(res):
         csv.writer(fh).writerows(rows)
     with open(os.path.join(d, "parameters.json"), "w", encoding="utf-8") as fh:
         json.dump(res["params"], fh, indent=1)
+    lib.finish_export(folder, "run", "Rule comparison (invented world)", generated=res.get("generated"), seed=res["params"].get("seed"))
     return d
 
 
 def save_world_bundle(wj):
     res = wj.result
-    stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
-    d = os.path.join(export_dir(), f"world_{stamp}"); os.makedirs(d, exist_ok=True)
+    lib = library()
+    folder = lib.new_export("world"); d = str(folder)
     with open(os.path.join(d, "world_results.json"), "w", encoding="utf-8") as fh:
         json.dump(dict(result=res, counterfactual=wj.cf), fh, indent=1)
     with open(os.path.join(d, "coded_world.xlsx"), "wb") as fh:
@@ -398,6 +448,7 @@ def save_world_bundle(wj):
                          x["claimed_primary"][i], x["placed_here"][i], code not in res["unverified"]])
     with open(os.path.join(d, "jurisdictions.csv"), "w", newline="", encoding="utf-8") as fh:
         csv.writer(fh).writerows(rows)
+    lib.finish_export(folder, "world", "Coded-world results", generated=res.get("generated"), **_provenance())
     return d
 
 
@@ -433,7 +484,155 @@ class Handler(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length") or 0)
         return json.loads(self.rfile.read(n) or b"{}") if n else {}
 
+    def _file_name(self, default="file"):
+        return LIBM.safe_name(unquote(self.headers.get("X-File-Name") or default)) or default
+
+    def _record_import(self, data, kind, note):
+        """Keep a copy of what was loaded (build plan s 15, F4). Never stops the load itself."""
+        try:
+            with FILE_LOCK:
+                return library().record_import(self._file_name(kind), data, kind=kind, note=note)["path"]
+        except Exception:                                 # noqa: BLE001
+            traceback.print_exc()
+            return None
+
+    # ---- file manager (build plan s 15) -------------------------------------------------------------
+    def _files_get(self, path, q):
+        one = lambda k, d="": (q.get(k) or [d])[0]
+        try:
+            lib = library()
+            if path == "/api/files/list":
+                return self._send(200, lib.listing(one("path")))
+            if path == "/api/files/preview":
+                return self._send(200, lib.preview(one("path")))
+            if path == "/api/files/trash":
+                return self._send(200, {"items": lib.trash_list()})
+            if path == "/api/files/log":
+                return self._send(200, {"items": lib.history(200), "undo": lib.last_undoable()})
+            if path == "/api/files/library":
+                n, size = LIBM.folder_stats(lib.root)
+                try:
+                    free = LIBM.shutil.disk_usage(lib.root).free
+                except OSError:
+                    free = None
+                return self._send(200, {"root": str(lib.root), "default": default_library(), "is_default": str(lib.root) == str(LIBM.Path(default_library()).resolve()),
+                                        "files": n, "bytes": size, "free_bytes": free, "busy": tasks_running(),
+                                        "synced": any(x in str(lib.root).lower() for x in LIBM.SYNCED), "undo": lib.last_undoable()})
+            if path == "/api/files/raw":
+                p = lib.resolve(one("path"))
+                if not p.is_file():
+                    return self._send(404, {"error": "Not a file."})
+                data = p.read_bytes()
+                types = {".png": "image/png", ".svg": "image/svg+xml", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
+                         ".csv": "text/csv; charset=utf-8", ".json": "application/json", ".md": "text/markdown; charset=utf-8",
+                         ".txt": "text/plain; charset=utf-8", ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
+                ctype = types.get(p.suffix.lower(), "application/octet-stream")
+                inline = one("inline") == "1" and p.suffix.lower() in (".png", ".jpg", ".jpeg", ".gif")
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("Content-Disposition", ("inline" if inline else "attachment") + f"; filename*=UTF-8''{quote(p.name)}")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers(); self.wfile.write(data)
+                return
+        except LIBM.LibraryError as exc:
+            return self._send(400, {"error": str(exc)})
+        except FileNotFoundError:
+            return self._send(404, {"error": "Not found. It may have been moved; refresh the list."})
+        return self._send(404, {"error": "Not found"})
+
+    def _files_post(self, path, q):
+        try:
+            if path == "/api/files/import":
+                data = self._raw()
+                name = self._file_name("file")
+                apply = (q.get("apply") or ["0"])[0] == "1"
+                is_pkg = name.lower().endswith(LIBM.PACKAGE_EXT) or (data[:2] == b"PK" and b"package.json" in data[-65536:])
+                with FILE_LOCK:
+                    if is_pkg:
+                        return self._send(200, dict(kind="package", **library().import_package(data, name, apply=apply)))
+                    if not apply:
+                        return self._send(200, {"kind": "file", "name": name, "bytes": len(data), "applied": False})
+                    res = library().record_import(name, data, kind="file", note="imported by the user")
+                    return self._send(200, dict(kind="file", applied=True, **res))
+            b = self._body()
+            if path == "/api/files/op":
+                return self._files_op(b)
+            if path == "/api/files/library":
+                return self._library_op(b)
+        except LIBM.LibraryError as exc:
+            return self._send(400, {"error": str(exc)})
+        except OSError as exc:
+            return self._send(500, {"error": f"The operation could not be completed: {exc}"})
+        return self._send(404, {"error": "Not found"})
+
+    def _files_op(self, b):
+        op = b.get("op"); lib = library()
+        paths = [str(x) for x in (b.get("paths") or [])]
+        apply = bool(b.get("apply"))
+        changing = op in ("make_folder", "rename", "move", "copy", "trash", "restore", "empty_trash", "undo", "package")
+        if changing and tasks_running() and (apply or op in ("make_folder", "rename", "restore", "undo", "package")):
+            return self._send(409, {"error": "A task is running. Wait for it to finish before changing files."})
+        with FILE_LOCK:
+            if op == "make_folder":
+                return self._send(200, lib.make_folder(b.get("parent", ""), b.get("name") or "New folder"))
+            if op == "rename":
+                return self._send(200, lib.rename(b.get("path", ""), b.get("name") or ""))
+            if op in ("move", "copy"):
+                return self._send(200, lib.transfer(paths, b.get("dest", ""), copy=(op == "copy"), apply=apply))
+            if op == "trash":
+                return self._send(200, lib.trash(paths, apply=apply))
+            if op == "restore":
+                return self._send(200, lib.restore(paths))
+            if op == "empty_trash":
+                return self._send(200, lib.empty_trash(apply=apply))
+            if op == "undo":
+                return self._send(200, lib.undo())
+            if op == "verify":
+                return self._send(200, lib.verify(b.get("path", "")))
+            if op == "package":
+                return self._send(200, lib.make_package(paths, b.get("name") or ""))
+            if op == "reveal":
+                return self._send(200, reveal(lib.resolve(b.get("path", ""))))
+        return self._send(400, {"error": "Unknown operation."})
+
+    def _library_op(self, b):
+        global _LIB
+        action = b.get("action"); lib = library()
+        if action == "plan":
+            return self._send(200, LIBM.plan_move_library(lib.root, str(b.get("target") or "")))
+        if action in ("move", "adopt", "reset") and tasks_running():
+            return self._send(409, {"error": "A task is running. Wait for it to finish before moving the library."})
+        with FILE_LOCK:
+            if action == "move":
+                res = LIBM.move_library(lib.root, str(b.get("target") or ""), apply=True)
+                if res.get("applied"):
+                    st = load_settings(); st["library"] = res["target"]; save_settings(st); _LIB = None
+                return self._send(200, res)
+            if action == "adopt":
+                res = LIBM.adopt_library(str(b.get("target") or ""))
+                st = load_settings(); st["library"] = res["folder"]; save_settings(st); _LIB = None
+                return self._send(200, dict(res, applied=True))
+            if action == "reset":
+                st = load_settings(); st.pop("library", None); save_settings(st); _LIB = None
+                return self._send(200, {"applied": True, "root": str(library().root)})
+        return self._send(400, {"error": "Unknown action."})
+
+    # ---- request guard (build plan s 15.3, issue 1) ----------------------------------------------
+    def _host_ok(self):
+        port = self.server.server_address[1]
+        return (self.headers.get("Host") or "").strip().lower() in (f"127.0.0.1:{port}", f"localhost:{port}")
+
+    def _refuse(self, code, msg):
+        self.close_connection = True
+        return self._send(code, {"error": msg})
+
     def do_GET(self):
+        if not self._host_ok():
+            return self._refuse(403, "Requests are accepted only at this computer's own address.")
+        u = urlsplit(self.path)
+        if u.path.startswith("/api/files/"):
+            return self._files_get(u.path, parse_qs(u.query))
         if self.path in ("/", "/index.html"):
             with open(resource("ui.html"), "rb") as fh:
                 return self._send(200, fh.read(), "text/html; charset=utf-8")
@@ -473,6 +672,15 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(404, {"error": "Not found"})
 
     def do_POST(self):
+        if not self._host_ok():
+            return self._refuse(403, "Requests are accepted only at this computer's own address.")
+        if self.headers.get("X-JAF") != "1":
+            return self._refuse(403, "Changes are accepted only from the program's own interface.")
+        if int(self.headers.get("Content-Length") or 0) > MAX_UPLOAD:
+            return self._refuse(413, "The file is larger than 512 MB. Move larger collections with 'Move the library', or copy the package file directly.")
+        u = urlsplit(self.path)
+        if u.path.startswith("/api/files/"):
+            return self._files_post(u.path, parse_qs(u.query))
         if self.path == "/api/run":
             b = self._body()
             sweep = max(0, min(200, int(b.get("sweep", 12))))
@@ -482,10 +690,13 @@ class Handler(BaseHTTPRequestHandler):
             self._raw()
             return self._send(409, {"error": "A task is running. Wait for it to finish, or cancel it, before loading another world."})
         if self.path == "/api/world/load":
-            world, design, issues = read_workbook(self._raw())
+            data = self._raw()
+            world, design, issues = read_workbook(data)
+            rec = None
             if world is not None:
                 WJOB.set_world(world, issues, design)
-            return self._send(200, {"ok": world is not None, "issues": issues, "design": design is not None})
+                rec = self._record_import(data, "coded workbook", "loaded on the Real-world sample tab")
+            return self._send(200, {"ok": world is not None, "issues": issues, "design": design is not None, "recorded": rec})
         if self.path == "/api/world/illustrative":
             from jaf.examples import illustrative_design
             w = illustrative_world()
@@ -534,7 +745,8 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 return self._send(400, {"error": "This is not a JAF Rule Bench pre-registration file (.json)."})
             EJOB.record = rec; EJOB._persist()
-            return self._send(200, {"fingerprint": rec.get("fingerprint")})
+            kept = self._record_import(raw.encode("utf-8"), "pre-registration record", "loaded on the Test against data tab")
+            return self._send(200, {"fingerprint": rec.get("fingerprint"), "recorded": kept})
         if self.path == "/api/est/save":
             if not EJOB.results:
                 return self._send(400, {"error": "There are no estimation results to save yet."})
@@ -569,6 +781,23 @@ class Handler(BaseHTTPRequestHandler):
             threading.Thread(target=self.server.shutdown, daemon=True).start()
             return
         return self._send(404, {"error": "Not found"})
+
+
+def reveal(p):
+    """Show a file or folder in the computer's file browser (Explorer on Windows)."""
+    try:
+        if platform.system() == "Windows":
+            if p.is_file():
+                subprocess.Popen(["explorer", "/select,", str(p)])
+            else:
+                os.startfile(str(p))                     # noqa: S606 (a path inside the library)
+        elif platform.system() == "Darwin":
+            subprocess.Popen(["open", "-R", str(p)] if p.is_file() else ["open", str(p)])
+        else:
+            subprocess.Popen(["xdg-open", str(p if p.is_dir() else p.parent)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return {"opened": True}
+    except Exception as exc:                              # noqa: BLE001
+        return {"opened": False, "error": f"The file browser could not be opened: {exc}"}
 
 
 def free_port(start=8765):

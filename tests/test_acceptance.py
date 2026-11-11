@@ -168,7 +168,7 @@ check("23 a template from 0.3 (no new columns, no Treaties sheet) loads, with wa
       and any("Assumed to locate intermediaries by legal seat" in i["message"] for i in iss23))
 
 # ---- version 1.0 (build plan s 14) ------------------------------------------------------------
-import copy, json, math
+import copy, json, math, shutil
 from jaf.design import Design, Observation, ParamSpec, apply_episode, fingerprint
 from jaf.measure import Measured, QUANTITIES, observation_value
 from jaf.estimate import Model, identification, estimate, validate, chi2_sf
@@ -317,6 +317,163 @@ check("40 review 7: parameter values outside what the model admits, reversed or 
       len(e40) >= 6 and any("alpha" in x and "outside" in x for x in e40) and any("sigma" in x for x in e40)
       and any("theta0" in x and "below the upper" in x for x in e40) and any("more than once" in x for x in e40)
       and any("both ends" in x for x in e40), f"{len(e40)} errors")
+
+# ---- version 1.1: file library (build plan s 15) ------------------------------------------------
+import tempfile, zipfile, threading, http.client
+from pathlib import Path
+from jaf import library as LIBM
+from jaf.library import Library, LibraryError
+
+def _bundle(lib, kind="run", text="a,b\n1,2\n"):
+    d = lib.new_export(kind)
+    (d / "table.csv").write_text(text, encoding="utf-8")
+    (d / "note.json").write_text(json.dumps({"version": "1.1", "kind": kind}), encoding="utf-8")
+    lib.finish_export(d, kind, f"Test {kind}")
+    return d
+
+T = Path(tempfile.mkdtemp(prefix="jaf_lib_"))
+L1 = Library(T / "lib1")
+b1 = _bundle(L1)
+ok1 = L1.check_item(b1)["status"] == "ok"
+(b1 / "table.csv").write_text("a,b\n1,3\n", encoding="utf-8")            # same size, different content
+quick = L1.check_item(b1)["status"]; full = L1.check_item(b1, full=True)
+(b1 / "table.csv").write_text("a,b\n1,2\n", encoding="utf-8")
+check("41 manifests: a saved bundle is intact; a same-size change is caught by the full SHA-256 check",
+      ok1 and quick == "ok" and full["status"] == "changed" and full["changed"] == ["table.csv"])
+
+bad = []
+for r in ("../outside", "Exports/../../x", "/etc", "C:\\Windows", "~/x", ".jaf/log.jsonl", "Exports/..\\..\\x"):
+    try:
+        L1.resolve(r); bad.append(r)
+    except LibraryError:
+        pass
+check("42 every path outside the library, and the program's own folder, is refused",
+      not bad and L1.resolve("Exports").name == "Exports", f"accepted: {bad}")
+
+L1.make_folder("", "Chapter 3")
+p43 = L1.plan_transfer([b1.relative_to(L1.root).as_posix()], "Chapter 3", copy=True)
+r43 = L1.transfer([b1.relative_to(L1.root).as_posix()], "Chapter 3", copy=True, apply=True)
+r43b = L1.transfer([b1.relative_to(L1.root).as_posix()], "Chapter 3", copy=True, apply=True)   # name taken: renamed
+into_self = L1.plan_transfer(["Chapter 3"], "Chapter 3/" + b1.name, copy=False)
+std = L1.plan_transfer(["Exports"], "Chapter 3", copy=False)
+names = sorted(p.name for p in (L1.root / "Chapter 3").iterdir())
+check("43 copy: dry run changes nothing; copies are verified; a taken name is renamed; a folder cannot go into itself; standard folders stay",
+      p43["can_apply"] and r43["applied"] and not r43["verification_failed"] and names == [b1.name, f"{b1.name} (2)"]
+      and not into_self["can_apply"] and not std["can_apply"], f"{names}")
+
+rel = f"Chapter 3/{b1.name} (2)"
+t44 = L1.trash([rel], apply=True)
+in_trash = [i for i in L1.trash_list() if i["origin"] == rel]
+u44 = L1.undo()
+back = (L1.root / rel).exists()
+L1.trash([rel], apply=True)
+e0 = L1.empty_trash(apply=False); still = len(L1.trash_list())
+L1.empty_trash(apply=True)
+check("44 Trash: items keep their origin; undo restores; emptying needs a separate step and ends the undo chain",
+      t44["applied"] and len(in_trash) == 1 and u44["undone"] and back and e0["items"] == 1 and still == 1
+      and not L1.trash_list() and L1.last_undoable() is None)
+
+r45 = L1.rename("Chapter 3", "CON")
+try:
+    L1.rename(r45["path"], "Exports"); clash = False
+except LibraryError:
+    clash = True
+u45 = L1.undo()
+try:
+    L1.rename("Exports", "Results"); std_ren = True
+except LibraryError:
+    std_ren = False
+check("45 rename: names are made safe on every system; a taken name is refused; undo restores; standard folders keep their names",
+      r45["path"] == "_CON" and clash and u45["undone"] and (L1.root / "Chapter 3").is_dir() and not std_ren)
+
+pk = L1.make_package([f"Chapter 3/{b1.name}", "Exports"], "For my laptop")
+data = (L1.root / pk["path"]).read_bytes()
+L2 = Library(T / "lib2")                                   # the other computer
+info = L2.inspect_package(data)
+imp = L2.import_package(data, apply=True)
+copied = L2.resolve(imp["path"]) / b1.name
+same = L2.check_item(copied, full=True)["status"] == "ok" and LIBM.sha256_file(copied / "table.csv") == LIBM.sha256_file(b1 / "table.csv")
+# tampered package: change one byte of one member
+buf = io.BytesIO()
+with zipfile.ZipFile(io.BytesIO(data)) as zi, zipfile.ZipFile(buf, "w") as zo:
+    for it in zi.infolist():
+        b = zi.read(it.filename)
+        zo.writestr(it, b.replace(b"1,2", b"9,2") if it.filename.endswith("table.csv") else b)
+before = sorted(p.name for p in (L2.root / "Imports").iterdir())
+t46 = L2.import_package(buf.getvalue(), apply=True)
+after = sorted(p.name for p in (L2.root / "Imports").iterdir())
+slip = io.BytesIO()
+with zipfile.ZipFile(slip, "w") as z:
+    z.writestr("package.json", json.dumps({"files": []})); z.writestr("../evil.txt", "x")
+try:
+    L2.inspect_package(slip.getvalue()); slip_ok = False
+except LibraryError:
+    slip_ok = True
+try:
+    L2.inspect_package(b"not a zip"); junk_ok = False
+except LibraryError:
+    junk_ok = True
+check("46 packages: carried to another library intact (hashes equal); a tampered package, an unsafe path and a non-package are refused, and nothing is extracted",
+      info["intact"] and imp["applied"] and same and not t46["applied"] and before == after and slip_ok and junk_ok,
+      f"{info['files']} files, problems in tampered copy: {len(t46['problems'])}")
+
+src = T / "lib3"; L3 = Library(src); _bundle(L3, "world")
+pm = LIBM.plan_move_library(src, str(src / "inside"))
+(T / "full").mkdir(); (T / "full" / "x.txt").write_text("x")
+pf = LIBM.plan_move_library(src, str(T / "full"))
+dry = LIBM.move_library(src, str(T / "moved"), apply=False)
+r47 = LIBM.move_library(src, str(T / "moved"), apply=True)
+moved_ok = r47["applied"] and not src.exists() and Library(T / "moved").verify()["problems"] == 0
+_same = LIBM.same_device
+LIBM.same_device = lambda a, b: False                       # as if the target were another drive
+try:
+    r47c = LIBM.move_library(T / "moved", str(T / "usb" / "JAF"), apply=True)
+finally:
+    LIBM.same_device = _same
+copied_ok = r47c["applied"] and r47c["method"] == "copy" and (T / "moved").exists() and Library(T / "usb" / "JAF").verify()["problems"] == 0
+check("47 moving the library: refused into itself or a non-empty folder; dry run changes nothing; same drive renames; another drive copies, verifies and leaves the old folder",
+      not pm["can_apply"] and not pf["can_apply"] and not dry["applied"] and moved_ok and copied_ok)
+
+a48 = LIBM.adopt_library(str(T / "usb" / "JAF"))
+try:
+    LIBM.adopt_library("relative/path"); rel_ok = False
+except LibraryError:
+    rel_ok = True
+check("48 adopting a library copied from elsewhere checks every saved result first", a48["bundles"] == 1 and a48["problems"] == 0 and rel_ok)
+
+rec = L1.record_import("data sheet.csv", b"x,y\n1,2\n3,4\n", kind="file")
+pv_csv = L1.preview(rec["file"])
+wbp = L1.record_import("coded.xlsx", write_template(kind="illustrative"), kind="coded workbook")
+pv_x = L1.preview(wbp["file"])
+broken = L1.record_import("broken.xlsx", b"PK not really", kind="file")
+pv_b = L1.preview(broken["file"])
+check("49 imports are kept with their fingerprint; previews of tables and workbooks work, and a damaged file is reported, not fatal",
+      pv_csv["kind"] == "table" and pv_csv["rows"][1] == ["1", "2"] and pv_x["kind"] == "workbook"
+      and pv_x["sheets"][0]["name"] == "Read me" and pv_b["kind"] == "error" and len(rec["sha256"]) == 64)
+
+spec_s = importlib.util.spec_from_file_location("srv2", "app/server.py"); S2 = importlib.util.module_from_spec(spec_s); spec_s.loader.exec_module(S2)
+appd = T / "appdata"; appd.mkdir()
+S2.data_dir = lambda: str(appd)
+S2.default_library = lambda: str(T / "srvlib")
+S2.JOB = S2.Job(); S2.WJOB = S2.WorldJob(); S2.EJOB = S2.EstJob()
+httpd = S2.ThreadingHTTPServer(("127.0.0.1", 0), S2.Handler); port = httpd.server_address[1]
+threading.Thread(target=httpd.serve_forever, daemon=True).start()
+def req(method, path, body=b"", headers=None):
+    c = http.client.HTTPConnection("127.0.0.1", port, timeout=60)
+    h = {"Host": f"127.0.0.1:{port}"}; h.update(headers or {})
+    c.request(method, path, body=body, headers=h); r = c.getresponse(); d = r.read(); c.close()
+    return r.status, d
+st_noheader, _ = req("POST", "/api/world/illustrative", b"{}")
+st_host, _ = req("GET", "/api/files/list", headers={"Host": "attacker.example"})
+st_load, d_load = req("POST", "/api/world/load", write_template(kind="illustrative"), {"X-JAF": "1", "X-File-Name": "my%20coding.xlsx"})
+st_list, d_list = req("GET", "/api/files/list?path=Imports")
+st_trav, _ = req("GET", "/api/files/raw?path=..%2F..%2Fetc%2Fpasswd")
+httpd.shutdown()
+imports = [e["name"] for e in json.loads(d_list)["entries"]] if st_list == 200 else []
+check("50 the server refuses changes without the interface's header and requests for other host names; loads are recorded in Imports; traversal is refused",
+      st_noheader == 403 and st_host == 403 and st_load == 200 and json.loads(d_load)["recorded"] and len(imports) == 1
+      and imports[0].endswith("my coding") and st_trav == 400, f"{st_noheader} {st_host} {st_load} {st_trav} {imports}")
+shutil.rmtree(T, ignore_errors=True)
 
 print(f"\n{sum(results)}/{len(results)} passed")
 raise SystemExit(len(results) - sum(results))

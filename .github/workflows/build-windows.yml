@@ -57,21 +57,29 @@ jobs:
           $ok = $false
           for ($i = 0; $i -lt 60; $i++) { try { $d = Invoke-RestMethod "$u/api/defaults"; $ok = $true; break } catch { Start-Sleep 2 } }
           if (-not $ok) { Get-Content exe.log, exe.err; Write-Error "the interface did not start"; exit 1 }
-          Invoke-RestMethod -Method Post "$u/api/world/illustrative" -ContentType "application/json" -Body "{}" | Out-Null
-          Invoke-RestMethod -Method Post "$u/api/est/run" -ContentType "application/json" -Body '{"kind":"identify","params":{}}' | Out-Null
+          Invoke-RestMethod -Method Post "$u/api/world/illustrative" -Headers @{ "X-JAF" = "1" } -ContentType "application/json" -Body "{}" | Out-Null
+          Invoke-RestMethod -Method Post "$u/api/est/run" -Headers @{ "X-JAF" = "1" } -ContentType "application/json" -Body '{"kind":"identify","params":{}}' | Out-Null
           for ($i = 0; $i -lt 120; $i++) { $s = Invoke-RestMethod "$u/api/est/state"; if (-not $s.running) { break }; Start-Sleep 2 }
           $e = Invoke-RestMethod "$u/api/est/data"
           if ($e.results.identify.status -ne "ok") { Write-Error "identification check failed: $($e.results.identify.status) $($s.error)"; exit 1 }
-          Invoke-RestMethod -Method Post "$u/api/world/run" -ContentType "application/json" -Body '{"params":{}}' | Out-Null
+          Invoke-RestMethod -Method Post "$u/api/world/run" -Headers @{ "X-JAF" = "1" } -ContentType "application/json" -Body '{"params":{}}' | Out-Null
           for ($i = 0; $i -lt 120; $i++) { $s = Invoke-RestMethod "$u/api/world/state"; if (-not $s.running) { break }; Start-Sleep 2 }
           if ($s.error) { Write-Error "coded-world run failed: $($s.error)"; exit 1 }
+          $h = @{ "X-JAF" = "1" }
+          Invoke-RestMethod -Method Post "$u/api/world/save" -Headers $h -ContentType "application/json" -Body "{}" | Out-Null
+          $ex = Invoke-RestMethod "$u/api/files/list?path=Exports"
+          if ($ex.entries.Count -lt 1 -or $ex.entries[0].integrity -ne "ok") { Write-Error "saved bundle missing or not intact"; exit 1 }
+          $pk = Invoke-RestMethod -Method Post "$u/api/files/op" -Headers $h -ContentType "application/json" -Body (@{ op = "package"; paths = @($ex.entries[0].rel); name = "ci" } | ConvertTo-Json)
+          Invoke-WebRequest "$u/api/files/raw?path=$([uri]::EscapeDataString($pk.path))" -OutFile ci.jafpack
+          $r = Invoke-WebRequest -Method Post "$u/api/world/illustrative" -ContentType "application/json" -Body "{}" -SkipHttpErrorCheck
+          if ($r.StatusCode -ne 403) { Write-Error "a change without the interface header was accepted"; exit 1 }
           Invoke-WebRequest "$u/api/template/blank" -OutFile blank.xlsx
           if ((Get-Item blank.xlsx).Length -lt 10000) { Write-Error "template download failed"; exit 1 }
-          Invoke-RestMethod -Method Post "$u/api/quit" -ContentType "application/json" -Body "{}" | Out-Null
+          Invoke-RestMethod -Method Post "$u/api/quit" -Headers @{ "X-JAF" = "1" } -ContentType "application/json" -Body "{}" | Out-Null
           Start-Sleep 3
           if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
           Get-Content exe.log
-          "Smoke test passed: version $($d.version), identification $($e.results.identify.status)"
+          "Smoke test passed: version $($d.version), identification $($e.results.identify.status), file library and request guard"
       - name: Package
         shell: pwsh
         run: |

@@ -2,7 +2,7 @@
 
 A research tool accompanying the paper *Jurisdictional Assignment Functions* (SSRN 7351160). It models how the rule for deciding which state may tax a digital-asset holding (the assignment rule) affects how much tax can be collected, and how often holdings end up untaxed or taxed twice.
 
-> **Status: version 1.0.** A validation-ready instrument: it can estimate the model's behavioural settings from observed facts and test its predictions, with every method proven on synthetic data first. It contains **no results about real countries**; those belong to a later empirical piece. Cite a specific release, not this repository's main branch. Results from the invented example describe no real country.
+> **Status: version 1.1.** A validation-ready instrument: it can estimate the model's behavioural settings from observed facts and test its predictions, with every method proven on synthetic data first. It contains **no results about real countries**; those belong to a later empirical piece. Cite a specific release, not this repository's main branch. Results from the invented example describe no real country.
 
 ## What it does
 
@@ -11,6 +11,7 @@ A research tool accompanying the paper *Jurisdictional Assignment Functions* (SS
 - **Mismatch map.** For every pair of states, which may tax a holding. It needs no economic assumptions: it is the coded law run through the paper's assignment logic.
 - **What-if analysis.** Change one state's rule and see the effect on every state.
 - **Test against data (new in 1.0).** Describe versions of the law to compare (a single reform such as India 2022, or successive waves of automatic exchange of information such as CARF), the facts observed under each and their margins of error. The tool checks whether the facts can pin the model's settings down, proves its estimator on data it generates itself, estimates the settings, predicts facts held back, and freezes the design for pre-registration.
+- **Your files (new in 1.1).** One library for every saved result and every file loaded: previews, folders, move and copy with a preview of the change, a Trash, undo, checks by SHA-256 fingerprint, packages for moving results between computers, and moving the whole library to another drive.
 - **Two reading modes.** Plain English for readers without quantitative training; Technical for economists. Every chart exports as PNG, SVG or CSV.
 
 ## Getting started
@@ -35,7 +36,7 @@ Start from `templates/JAF_template_real_sample_BLANK.xlsx`. Fill one row per jur
 PYTHONPATH=. python tests/test_acceptance.py
 ```
 
-The suite (35 tests) checks, among other things, that the mixed-regime engine reproduces the single-rule engine exactly when every state applies the same rule, that the estimator recovers known settings from synthetic data, and that identification failures and departures from a pre-registered design are detected. It takes a few minutes.
+The suite (50 tests) checks, among other things, that the mixed-regime engine reproduces the single-rule engine exactly when every state applies the same rule, that the estimator recovers known settings from synthetic data, and that identification failures and departures from a pre-registered design are detected. It takes a few minutes.
 
 ## Documentation
 
@@ -59,7 +60,7 @@ See `docs/build_plan.md`, sections 12 to 14, and `docs/model_specification.md`, 
 
 Cite the archived version used, with its DOI (each version is deposited on Zenodo):
 
-> Wen Yi LEONG, *JAF Rule Bench* (version 1.0.0, 2026) <https://doi.org/[DOI]>
+> Wen Yi LEONG, *JAF Rule Bench* (version 1.1.0, 2026) <https://doi.org/[DOI]>
 
 GitHub's "Cite this repository" button (from `CITATION.cff`) gives other formats.
 

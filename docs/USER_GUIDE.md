@@ -1,6 +1,6 @@
 # JAF Rule Bench: User Guide
 
-*Version 1.0. For readers with legal training and for economists. Every screen has a Plain English and a Technical reading mode (top right); this guide follows the Plain English labels and gives the technical term in brackets where it helps.*
+*Version 1.1. For readers with legal training and for economists. Every screen has a Plain English and a Technical reading mode (top right); this guide follows the Plain English labels and gives the technical term in brackets where it helps.*
 
 ## 1. What the tool is for
 
@@ -28,6 +28,7 @@ Saved results go to a "JAF Rule Bench" folder in your Documents. The tool rememb
 | Test against data | Episodes, observed facts, identification check, estimation, predictions, recovery test, pre-registration |
 | Tax each rule sustains, Cross-border picture, Where the base goes, Untaxed or double-taxed?, What authorities can see, Why rules differ, How robust? | The paper's analyses on the invented world |
 | Chart builder | Your own charts from the results |
+| Your files | Every saved result and every file loaded, in one library: preview, organise, check, package for another computer, or move the library |
 | Findings register | Model outputs that hold across robustness reruns, and draft hypotheses |
 | Guide and glossary | Every term, in plain and technical form |
 
@@ -102,7 +103,34 @@ The template's sheets **Episodes**, **Data**, **Measurement**, **Estimation** an
 
 On the Test against data tab, choose "Use the invented example with synthetic data". Its facts were generated from known settings (how strongly holders react to tax rates, 3.4; ease of using a foreign exchange, 0.55) with random error added. Run the three steps: the identification check passes; the recovery test passes; estimation should land close to the known settings, and the three predictions should be consistent. Note that in this example how much escape routes add to holders' reaction (β) cannot be separated from how strongly they react (θ₀), so it is fixed by judgement: the identification check shows why.
 
-## 7. Troubleshooting
+## 7. Your files
+
+Everything the program saves, and a copy of everything you load into it, is kept in one folder: your **library** (by default `Documents\JAF Rule Bench`). The **Your files** tab shows it.
+
+| Folder | What it holds |
+|---|---|
+| Exports | Results you save: rule comparisons, coded-world results, estimation results. Each is a folder with a record (`manifest.json`) of its files and their fingerprints |
+| Imports | A copy of every workbook and pre-registration record you load, and anything you bring in from another computer, each with its fingerprint |
+| Packages | Packages you make to take results to another computer (`.jafpack` files) |
+| Your own folders | Any folders you create, for example one per chapter |
+
+**What you can do**
+- **Preview** a table, a workbook, a text or JSON file, an image, or a saved result (with the list of its files) by clicking its name.
+- **Organise**: new folder, rename, move to, copy to. Moving and copying first show exactly what will happen; a name already taken gets " (2)".
+- **Delete safely**: "Move to Trash" keeps where each item came from; "Restore" puts it back; only "Empty the Trash", with its own confirmation, deletes permanently.
+- **Undo** the last change (a move, copy, rename, new folder or move to the Trash).
+- **Check for changes**: the program recomputes the fingerprint (SHA-256) of every file in the saved results and reports any that differ. A file you opened and saved in Excel will show as changed; that is expected.
+- **Download** a file through the browser, or **Show in Explorer** to open its folder.
+- Every action is listed under **What has been done**, and kept in the library, so it travels with it.
+
+**Taking work to another computer**
+- *Some results*: tick them, choose **Package for another computer**, download the package, and on the other computer use **Bring in a file or package**. The package records the fingerprint of every file; it is checked before anything is unpacked, and refused if anything has changed or if it tries to write outside the library.
+- *Everything*: under **Where your library is kept**, give the path of a folder on a USB stick or external drive, **Check the move**, then **Move the library**. On another drive every file is copied and checked before the program switches, and the old folder is left as it was. On the other computer, give that path and choose **Use a library already there**.
+- A synced folder (OneDrive, Dropbox) works, but keep the files available offline.
+
+**Safety.** The engine runs only on your computer and accepts changes only from its own interface, so a web page you visit cannot move or delete your files through it. Paths outside the library are refused.
+
+## 8. Troubleshooting
 
 | Problem | What to do |
 |---|---|
@@ -112,7 +140,9 @@ On the Test against data tab, choose "Use the invented example with synthetic da
 | "Rates did not settle" | The tool reports how much revenue any state forgoes at the final rates; below about 0.1%, results are usable |
 | Estimation is slow | Each step re-solves every episode many times. Reduce the number of search starts, estimated settings or episodes |
 | Results from an earlier version | Results saved by an earlier version are discarded on start; re-run |
+| A file is refused with "larger than 512 MB" | Move larger collections with "Move the library", or copy the package file directly |
+| The library is on a drive that is not connected | The program falls back to the default location; reconnect the drive, or use "Use a library already there" |
 
-## 8. Citing the tool
+## 9. Citing the tool
 
 Cite the archived release you used, with its DOI (see the README). Results from the invented example must be described as such and must not be presented as describing real countries.
