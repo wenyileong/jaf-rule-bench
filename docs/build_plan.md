@@ -471,4 +471,35 @@ After tests 41 to 50 passed, a separate reviewer who had not seen the build exam
 
 All 61 acceptance tests pass. The interface was checked in a browser in both reading modes and both colour schemes, with no script errors and no breach of the security policy; a file named, and a manifest filled, with markup were shown as text.
 
+
+### 15.8 Second review (whole program)
+
+A second independent review covered the whole program in three parts: the file library and server, the model and estimation core, and the workbook reader and interface. Each finding below was reproduced before it was fixed, and the reviewers' own reproduction scripts were run again against the fixed code.
+
+| Ref. | Finding | Fix | Test |
+|---|---|---|---|
+| 2.1 | Moving the library could delete the library itself, or a user's folder, if either was named like the temporary copy (`<target>.partial`), and then report success | The temporary copy carries a marker; a `.partial` folder without it, or one that is or contains the library, is refused; the number of files copied is checked before the switch; links not copied are reported | 61, 62 |
+| 2.2 | A copy that failed partway left a half-copied folder and said nothing had changed | The partial copy is removed | 63 |
+| 2.3 | Packages larger than the import limits could be made but never imported | Limits are checked when a package is made; a package copied into the library by hand can be unpacked there ("Unpack") | 64 |
+| 2.4 | A file operation queued behind a library move could act on the old library | The library is looked up inside the file lock | 50 to 54 |
+| 2.5 | Saving during an estimation could fail on results still being written, and a failed save left a half-written bundle | Results are copied before saving; a failed save is removed | 67 |
+| 2.6 | Undo could not reverse a rename that changed only letter case (Windows, macOS) | Recognised and reversed | (Windows build) |
+| 2.7 | An ordinary zip that mentioned `package.json` was taken for a package and refused | Only a `.jafpack`, or a zip with the package index at its top level, is treated as a package | 64 |
+| 2.8 | A package with a malformed index, or an unusual length header, crashed the request; the same item named twice was trashed twice | Refused with a message; items are compared by their resolved path | 65, 52 |
+| 2.9 | One unreadable folder broke every listing; checking a library before adopting it wrote to it; quitting could interrupt a move | Unreadable folders are skipped; the check is read only; quitting waits for a running file operation | 66 |
+| 1.1 | A target value of 'nan' or infinity produced an "ok" estimate at the starting values | Non-finite values and margins of error are refused by the reader and by the estimator; a non-finite fit is an error | 68, 69 |
+| 1.2 | The chi-squared tail probability reported 1.0 (a perfect fit) for a non-finite statistic | Returns not-a-number, or 0 for infinity | 69 |
+| 1.3 | The findings register could state Proposition 2 for a rule under which the gap was not the largest destination | Stated only where it holds; the default register and its fingerprint are unchanged | 70 |
+| 1.4 to 1.7 | Estimating with nothing free crashed; an episode could set an infinite value; a one-state world crashed the solver; unsettled episodes were also reported as approximately settled | Refused with a message; refused; handled; reported only for settled episodes | 69 |
+| 3.1 | Text from a workbook (names, sources, notes, hypotheses, messages) reached the page as markup: an OSCOLA source's URL in angle brackets vanished, and a crafted name could hide the "invented states" warning | All text from workbooks and the engine is escaped on arrival; exported CSV files keep the original text | browser check |
+| 3.2 | An upload refused by the engine (a task running, a file too large) showed no message; some buttons failed silently | Every refusal is shown | browser check |
+| 3.3 | Deleting the grey help row silently dropped the first data row | The help row is recognised by its text, wherever it is | 68 |
+| 3.4, 3.7 | 'nan', '1e999' and out-of-range ease-of-moving settings were accepted or crashed the reader; error messages gave the wrong row number when blank rows were present | Refused with a message; the sheet's real row number is given | 68 |
+| 3.5, 3.6 | Reloading the page lost track of a running world or estimation task; a finished model run cleared unsaved entries on other tabs | Running tasks are picked up on load; other tabs are not redrawn; the author's name is kept | browser check |
+| 3.8 | At phone width some tabs scrolled sideways | Controls wrap | browser check |
+
+Not changed: a formula cell without a saved value is still reported as empty (open and save the workbook in Excel first), and very large formatted sheets load slowly; neither loses or alters data.
+
+All 70 acceptance tests pass. The interface was checked again in a browser in both reading modes, both colour schemes and at 360 pixels wide, with no script errors.
+
 The model is unchanged from 1.0. The version stamp in the bundled default results was changed from 1.0 to 1.1 without re-running them, since every number is the same.

@@ -48,6 +48,8 @@ TRASH_INDEX = "trash-index.json"
 STANDARD = ("Exports", "Imports", "Packages")
 MAX_PACKAGE_BYTES = 2 * 1024 ** 3          # uncompressed size accepted from a package
 MAX_PACKAGE_FILES = 20000
+MAX_PACKAGE_FILE_BYTES = 512 * 1024 ** 2   # a package file larger than this cannot be brought in through the interface
+PARTIAL_MARK = ".jaf-unfinished-copy"      # marks a temporary library copy that the program may remove
 _BAD = re.compile(r'[\\/:*?"<>|\r\n\t\x00-\x1f]+')
 _RESERVED = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$",
              *(f"COM{i}" for i in "123456789¹²³"), *(f"LPT{i}" for i in "123456789¹²³")}
@@ -148,6 +150,13 @@ def unique_path(p: Path, also=()) -> Path:
         if not _taken(p.parent, q.name, also):
             return q
         i += 1
+
+
+def _same_file(a: Path, b: Path) -> bool:
+    try:
+        return os.path.samefile(a, b)
+    except OSError:
+        return False
 
 
 def same_device(a: Path, b: Path) -> bool:
@@ -277,7 +286,7 @@ class Library:
 
     def check_item(self, folder: Path, full=False):
         """Integrity of a bundle against its manifest: ok, changed, missing files, extra files."""
-        man = self.read_manifest(folder)
+        man = Library.read_manifest(folder)
         if man is None:
             return None
         changed, missing, listed = [], [], set()
@@ -345,8 +354,12 @@ class Library:
         def walk(p: Path, depth):
             if depth > max_depth:
                 return
-            for q in sorted((x for x in p.iterdir() if x.is_dir() and not is_link(x) and not (p == self.root and x.name == INTERNAL)),
-                            key=lambda x: x.name.lower()):
+            try:
+                subs = sorted((x for x in p.iterdir() if x.is_dir() and not is_link(x) and not (p == self.root and x.name == INTERNAL)),
+                              key=lambda x: x.name.lower())
+            except OSError:                               # an unreadable folder must not break the file manager
+                return
+            for q in subs:
                 out.append(self.rel(q))
                 if not self.read_manifest(q):
                     walk(q, depth + 1)
@@ -468,7 +481,8 @@ class Library:
             if done:
                 self.log(op, moves=done, partial=True, error=str(exc)[:300], **detail)
             raise LibraryError(f"Stopped after {len(done)} of {len(steps)} item(s): {exc}. "
-                               + ("What was done can be undone." if done else "Nothing was changed."))
+                               + ("What was done can be undone; the item that failed was left as it was." if done
+                                  else "Nothing was changed."))
         return self.log(op, moves=done, **detail)
 
     def transfer(self, rels, dest, copy=False, apply=False):
@@ -482,7 +496,14 @@ class Library:
             if _taken(dst.parent, dst.name):              # appeared since the plan
                 raise OSError(f"'{s['target']}' now exists")
             if copy:
-                _copy_tree(src, dst)
+                try:
+                    _copy_tree(src, dst)
+                except BaseException:                       # a failed copy leaves nothing half-copied behind
+                    if dst.is_dir():
+                        shutil.rmtree(dst, ignore_errors=True)
+                    elif dst.exists():
+                        dst.unlink()
+                    raise
                 chk = self.check_item(dst, full=True) if dst.is_dir() else None
                 if chk and chk["status"] != "ok":
                     verify.append(s["target"])
@@ -522,6 +543,8 @@ class Library:
         for r in dict.fromkeys(rels):
             try:
                 p = self.resolve(r)
+                if p in items:
+                    continue
             except LibraryError as exc:
                 problems.append(f"{r}: {exc}"); continue
             if not p.exists():
@@ -638,8 +661,11 @@ class Library:
                     problems.append(str(exc)); continue
                 if not a.exists():
                     problems.append(f"{now_} is no longer there."); continue
-                if b.exists():
+                same = b.exists() and _same_file(a, b)          # a rename that only changed letter case
+                if b.exists() and not same:
                     problems.append(f"{before} is occupied; {now_} was left where it is."); continue
+                if same:
+                    a.rename(a.with_name(b.name)); continue
                 b.parent.mkdir(parents=True, exist_ok=True)
                 shutil.move(str(a), str(b))
                 slot = a.parent
@@ -668,10 +694,19 @@ class Library:
     def new_export(self, kind: str) -> Path:
         d = unique_path(self.root / "Exports" / f"{kind}_{now_stamp()}")
         d.mkdir(parents=True)
+        self.__dict__.setdefault("pending", []).append(d)
         return d
+
+    def discard_pending(self):
+        """Remove saves that were started but not finished (a write failed), so no half-written bundle is left."""
+        for d in self.__dict__.pop("pending", []):
+            if d.exists() and self.read_manifest(d) is None:
+                shutil.rmtree(d, ignore_errors=True)
 
     def finish_export(self, folder: Path, kind: str, title: str, **meta):
         man = self.write_manifest(folder, kind, title, source="saved by the program", **meta)
+        if folder in self.__dict__.get("pending", []):
+            self.pending.remove(folder)
         self.log("save", path=self.rel(folder), kind=kind, files=len(man["files"]))
         return man
 
@@ -701,6 +736,11 @@ class Library:
         if not items:
             raise LibraryError("Choose at least one item to package.")
         items = [p for p in items if not any(q in p.parents for q in items)]
+        n_files = sum(1 if p.is_file() else sum(1 for _ in walk_files(p)) for p in items)
+        n_bytes = sum(_size(p) if p.is_file() else folder_stats(p)[1] for p in items)
+        if n_files > MAX_PACKAGE_FILES or n_bytes > MAX_PACKAGE_BYTES:
+            raise LibraryError(f"That is too much for one package ({n_files:,} files, {n_bytes / 1e6:,.0f} MB; the limit is "
+                               f"{MAX_PACKAGE_FILES:,} files and {MAX_PACKAGE_BYTES / 1e9:,.0f} GB). Package fewer items, or move the whole library.")
         title = safe_name(name or (items[0].name if len(items) == 1 else f"JAF package {now_stamp()}"))
         tmp = self.root / INTERNAL / "tmp" / f"{uuid.uuid4().hex}{PACKAGE_EXT}"
         files, index_items = [], []
@@ -724,7 +764,10 @@ class Library:
                 tmp.unlink()
         digest = sha256_file(out)
         self.log("package", path=self.rel(out), items=[self.rel(p) for p in items], files=len(files), sha256=digest)
-        return dict(path=self.rel(out), files=len(files), bytes=_size(out), sha256=digest)
+        big = _size(out) > MAX_PACKAGE_FILE_BYTES
+        return dict(path=self.rel(out), files=len(files), bytes=_size(out), sha256=digest,
+                    note=("This package is larger than 512 MB, so it cannot be uploaded through the program on the other "
+                          "computer. Copy the file into that library's Packages folder instead, then choose 'Unpack'." if big else ""))
 
     @staticmethod
     def _zip_hash(z, name, chunk=1 << 20):
@@ -764,6 +807,10 @@ class Library:
             try:
                 index = json.loads(z.read(PACKAGE_INDEX).decode("utf-8"))
                 assert isinstance(index, dict) and isinstance(index.get("files", []), list)
+                assert isinstance(index.get("items", []), list)
+                for f in index.get("files", []):              # every entry well formed, or the package is refused
+                    assert isinstance(f, dict) and isinstance(f.get("path"), str) and isinstance(f.get("sha256", ""), str)
+                    assert isinstance(f.get("bytes", 0), int) and not isinstance(f.get("bytes", 0), bool)
             except Exception:                              # noqa: BLE001
                 raise LibraryError("The package's index could not be read.")
             problems = []
@@ -795,6 +842,30 @@ class Library:
         return dict(title=title, created=str(index.get("created") or "")[:40], tool_version=str(index.get("tool_version") or "")[:20],
                     items=items, files=len(listed), bytes=sum(int(f.get("bytes") or 0) for f in listed.values()),
                     problems=problems, intact=not problems, hashes_checked=hash_files)
+
+    @staticmethod
+    def is_package(data: bytes, name: str = "") -> bool:
+        """A .jafpack file, or a zip whose top level holds package.json (not merely a zip mentioning it)."""
+        if name.lower().endswith(PACKAGE_EXT):
+            return True
+        if data[:2] != b"PK":
+            return False
+        import io as _io
+        try:
+            with zipfile.ZipFile(_io.BytesIO(data)) as z:
+                return PACKAGE_INDEX in z.namelist() and any(n.startswith("items/") for n in z.namelist())
+        except (zipfile.BadZipFile, OSError):
+            return False
+
+    def unpack(self, rel, apply=False):
+        """Check (and, with apply, import) a package file already inside the library, for example one copied in
+        from a USB stick because it was too large to upload."""
+        p = self.resolve(rel)
+        if not p.is_file() or p.suffix.lower() != PACKAGE_EXT:
+            raise LibraryError("Choose a package file (.jafpack).")
+        with open(p, "rb") as fh:
+            data = fh.read()
+        return self.import_package(data, p.name, apply=apply)
 
     def import_package(self, src, name="package.jafpack", apply=False):
         info = self.inspect_package(src)
@@ -860,8 +931,13 @@ def plan_move_library(root: Path, target: str):
     if dst.exists() and (not dst.is_dir() or any(dst.iterdir())):
         problems.append("The new location must be an empty folder, or a folder that does not exist yet.")
     partial = dst.with_name(dst.name + ".partial") if dst.name else None
-    if partial is not None and partial.exists():
-        warnings.append(f"An unfinished copy from an earlier attempt is at {partial}; it will be replaced.")
+    if partial is not None and (partial == root or partial in root.parents):
+        problems.append(f"The temporary copy would be made at {partial}, which holds the current library. Choose another name.")
+    elif partial is not None and partial.exists():
+        if (partial / PARTIAL_MARK).is_file():
+            warnings.append(f"An unfinished copy from an earlier attempt is at {partial}; it will be replaced.")
+        else:
+            problems.append(f"{partial} already exists and was not made by the program. Move or rename it, or choose another location.")
     probe = dst
     while not probe.exists() and probe != probe.parent:
         probe = probe.parent
@@ -903,11 +979,17 @@ def move_library(root: Path, target: str, apply=False):
     except OSError:
         method = "copy"
         partial = dst.with_name(dst.name + ".partial")
+        if partial == src or partial in src.parents:                 # checked in the plan; checked again here
+            return dict(plan, applied=False, note="The temporary copy would replace the current library; nothing was done.")
         if partial.exists():
+            if not (partial / PARTIAL_MARK).is_file():
+                return dict(plan, applied=False, note=f"{partial} exists and was not made by the program; nothing was done.")
             shutil.rmtree(partial)
         bad, skipped = [], []
+        copied = 0
         try:
             partial.mkdir(parents=True)
+            (partial / PARTIAL_MARK).write_text("A copy of a JAF Rule Bench library that has not finished. Safe to delete.", encoding="utf-8")
             for dirpath, dirnames, filenames in os.walk(src, followlinks=False):
                 d = Path(dirpath)
                 for n in list(dirnames):
@@ -920,10 +1002,16 @@ def move_library(root: Path, target: str, apply=False):
                     q = partial / p.relative_to(src)
                     q.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(p, q)
+                    copied += 1
                     if sha256_file(p) != sha256_file(q):
                         bad.append(p.relative_to(src).as_posix())
             if bad:
                 raise OSError(f"{len(bad)} copied file(s) differ from their originals")
+            n_now = folder_stats(partial)[0] - 1 + sum(1 for _ in walk_files(partial / INTERNAL))   # less the marker
+            n_src = folder_stats(src)[0] + sum(1 for _ in walk_files(src / INTERNAL))
+            if copied != n_src or n_now != n_src:
+                raise OSError(f"{copied} of {n_src} files were copied")
+            (partial / PARTIAL_MARK).unlink()
             if dst.exists():
                 dst.rmdir()
             os.replace(partial, dst)
@@ -936,7 +1024,9 @@ def move_library(root: Path, target: str, apply=False):
     lib.log("move_library", **{"from": str(src), "to": str(dst), "method": method})
     note = ("Moved by renaming." if method == "rename" else
             "Copied and verified. The old folder is untouched: delete it yourself once you have checked the new one.")
-    return dict(plan, applied=True, method=method, note=note)
+    if method == "copy" and skipped:
+        note += f" {len(skipped)} link(s) to other places were not copied: " + ", ".join(skipped[:5])
+    return dict(plan, applied=True, method=method, note=note, links_skipped=skipped if method == "copy" else [])
 
 
 def plan_adopt(folder: str):
@@ -948,11 +1038,17 @@ def plan_adopt(folder: str):
     if not (p / INTERNAL).is_dir() or is_link(p / INTERNAL):
         raise LibraryError("That folder is not a JAF Rule Bench library (it has no '.jaf' folder). "
                            "To start a new library there, use 'Move the library' instead.")
-    lib = Library(p, create=False)
-    res = lib.verify("")
-    n, size = folder_stats(lib.root)
-    return dict(folder=str(lib.root), files=n, bytes=size, bundles=len(res["items"]), problems=res["problems"],
-                damaged=[r["item"] for r in res["items"] if r["status"] != "ok"])
+    root = p.resolve()                                        # read only: nothing is created or logged (review 2)
+    items = []
+    for m in walk_files(root):
+        rel_parts = m.relative_to(root).parts
+        if m.name == MANIFEST and INTERNAL not in rel_parts:
+            chk = Library.check_item(None, m.parent, full=True)
+            if chk:
+                items.append(dict(item=m.parent.relative_to(root).as_posix(), **chk))
+    n, size = folder_stats(root)
+    damaged = [r["item"] for r in items if r["status"] != "ok"]
+    return dict(folder=str(root), files=n, bytes=size, bundles=len(items), problems=len(damaged), damaged=damaged)
 
 
 def adopt_library(folder: str):

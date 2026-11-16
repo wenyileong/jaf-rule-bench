@@ -67,7 +67,7 @@ button:hover { border-color: var(--accent); }
 button.primary { background: var(--accent); color: var(--panel); border-color: var(--accent); font-weight: 600; }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-select { border: 1px solid var(--rule); border-radius: 6px; padding: 5px 8px; background: var(--panel); color: var(--ink); }
+select { max-width: 100%; border: 1px solid var(--rule); border-radius: 6px; padding: 5px 8px; background: var(--panel); color: var(--ink); }
 .runbox { display: grid; gap: 8px; padding: 12px; background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; }
 .runrow { display: flex; gap: 8px; flex-wrap: wrap; }
 .prog { height: 6px; background: var(--rule-soft); border-radius: 3px; overflow: hidden; }
@@ -83,6 +83,9 @@ nav.tabs button[aria-selected="true"] { color: var(--accent); border-bottom-colo
 .tools { display: flex; gap: 4px; }
 .tools button { padding: 3px 8px; font-size: 0.74rem; font-family: var(--font-data); color: var(--ink-2); }
 .controls { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font-size: 0.84rem; color: var(--ink-2); }
+.controls > label { min-width: 0; max-width: 100%; }
+.controls select { min-width: 0; width: auto; text-overflow: ellipsis; }
+@media (max-width: 480px) { .controls > label { display: flex; flex-direction: column; align-items: flex-start; width: 100%; } .controls select { width: 100%; } }
 .findings { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
 .finding { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; display: grid; gap: 4px; align-content: start; }
 .finding .k { font-family: var(--font-data); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); }
@@ -433,7 +436,7 @@ function exportCard(id, kind, title) {
   const name = slug(title);
   if (kind === "csv") {
     const rows = CARD_DATA[id]; if (!rows) return;
-    const csv = rows.map(r => r.map(v => { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }).join(",")).join("\n");
+    const csv = rows.map(r => r.map(v => { const s = v == null ? "" : String(unEsc(v)); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }).join(",")).join("\n");
     return download(name + ".csv", new Blob([csv], { type: "text/csv" }));
   }
   const svg = $(id).querySelector(".host svg"); if (!svg) return;
@@ -854,7 +857,11 @@ GLOSS.push(["Coded world (real-world sample) terms", [
   ["Illustrative world", "A completed example made of invented states. Its rows are not anyone's law and must not be cited as such.", "Settings.illustrative = true.", "--muted"],
 ]]);
 
-async function loadWorld() { try { WD = await api("/api/world/data"); } catch (e) { WD = null; } }
+// Text from workbooks and the engine is escaped once on arrival, so every table, note and chart that shows it is safe
+// (review, 15.8); CSV export decodes it again so exported files keep the original text.
+function deepEsc(o) { if (typeof o === "string") return escH(o); if (Array.isArray(o)) return o.map(deepEsc); if (o && typeof o === "object") { const r = {}; for (const k in o) r[k] = deepEsc(o[k]); return r; } return o; }
+function unEsc(s) { return typeof s === "string" ? s.replace(/&(amp|lt|gt|quot|#39);/g, (m, k) => ({ amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'" }[k])) : s; }
+async function loadWorld() { try { WD = deepEsc(await api("/api/world/data")); } catch (e) { WD = null; } }
 function wbanner(host, msg, kind = "warn") { const d = document.createElement("div"); d.className = `banner ${kind}`; d.innerHTML = msg; host.appendChild(d); }
 
 function worldTab(box) {
@@ -872,10 +879,13 @@ function worldTab(box) {
   $("w-up").onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
     const r = await fetch("/api/world/load", { method: "POST", headers: { "Content-Type": "application/octet-stream", "X-JAF": "1", "X-File-Name": encodeURIComponent(f.name) }, body: await f.arrayBuffer() });
-    const j = await r.json(); S.wUploadIssues = j.ok ? null : j.issues; ED = null; await loadWorld(); render();
+    $("w-up").value = "";
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok && !j.issues) return banner(escH(j.error || `The upload failed (${r.status}).`), "warn");
+    S.wUploadIssues = j.ok ? null : deepEsc(j.issues); ED = null; await loadWorld(); render();
     if (j.ok) banner(j.design ? P("Loaded, with an empirical design: see the <b>Test against data</b> tab.", "Loaded world and design.") : P("Loaded. The workbook has no data for testing the model (optional).", "Loaded world (no design)."), "warn");
   };
-  $("w-ill").onclick = async () => { await api("/api/world/illustrative", {}); S.wUploadIssues = null; ED = null; await loadWorld(); render(); };
+  $("w-ill").onclick = async () => { try { await api("/api/world/illustrative", {}); S.wUploadIssues = null; ED = null; await loadWorld(); render(); } catch (e) { banner(e.message, "warn"); } };
   if (S.wUploadIssues) {
     const errs = S.wUploadIssues.filter(i => i.level === "error");
     wbanner(c.foot, `<b>${P("The template could not be loaded.", "Template rejected.")}</b> ${errs.length} ${errs.length === 1 ? "problem" : "problems"} to fix (first 12 shown):<ul>${errs.slice(0, 12).map(i => `<li>${i.where}: ${i.message}</li>`).join("")}</ul>`, "bad");
@@ -1035,7 +1045,7 @@ async function wpoll() {
 
 /* ================= test against data (build plan s 14) ================= */
 let ED = null, epolling = null;
-async function loadEst() { try { ED = await api("/api/est/data"); } catch (e) { ED = null; } }
+async function loadEst() { try { ED = deepEsc(await api("/api/est/data")); } catch (e) { ED = null; } }
 const ROLE_CHIP = r => r === "target" ? `<span class="chip accent">${P("used to fit", "target")}</span>` : `<span class="chip warn">${P("kept back to test", "holdout")}</span>`;
 const STATUS_CHIP = { identified: ["chip ok", "identified", "identified"], weak: ["chip warn", "weakly pinned down", "weak"], "not identified": ["chip bad", "not pinned down", "not identified"], "no effect": ["chip bad", "no effect on the data", "no effect"] };
 const stChip = s => { const c = STATUS_CHIP[s] || ["chip", s, s]; return `<span class="${c[0]}">${P(c[1], c[2])}</span>`; };
@@ -1084,7 +1094,7 @@ function calibTab(box) {
   if (!ED.has_world || !d) {
     const c = card(box, "c-e-none", P("No data loaded", "No design"), ""); c.root.querySelector(".tools").hidden = true;
     c.host.innerHTML = `<p>${P("Load a world on the <b>Real-world sample</b> tab. To test against data, the workbook needs the Episodes, Data and Estimation sheets (present in every template from version 1.0). The invented example comes with synthetic data so you can try the workflow.", "Load a workbook with design sheets on the coded-world tab, or the illustrative world (synthetic design).")}</p><button class="primary" id="e-ill">${P("Use the invented example with synthetic data", "Load illustrative world and design")}</button>`;
-    $("e-ill").onclick = async () => { await api("/api/world/illustrative", {}); WD = null; await loadEst(); render(); };
+    $("e-ill").onclick = async () => { try { await api("/api/world/illustrative", {}); WD = null; await loadEst(); render(); } catch (e) { banner(e.message, "warn"); } };
     return;
   }
   if (d.synthetic) wbanner(box, P("<b>Synthetic data.</b> The values below were generated by the tool from known settings, with random error added, with every setting in the left-hand panel at its default. They are not observations of anything; they show how the workflow behaves.", "<b>Synthetic design:</b> values generated at known parameters (rail at defaults) plus noise."));
@@ -1218,12 +1228,13 @@ function calibTab(box) {
   const c7 = card(box, "c-e-prereg", "Pre-registration", "SHA-256 fingerprint over the coded-world fingerprint, episodes, observation definitions (not values), measurement, parameter settings, estimation settings and hypotheses.");
   c7.root.querySelector(".tools").hidden = true;
   const rec = ED.record, ck = ED.prereg_check;
-  c7.ctl.innerHTML = `<label>${P("Author", "Author")} <input id="e-author" type="text" style="width:180px" value=""></label><label>${P("Title", "Title")} <input id="e-title" type="text" style="width:240px" value="${(d.label || "").replace(/"/g, "&quot;")}"></label>
+  c7.ctl.innerHTML = `<label>${P("Author", "Author")} <input id="e-author" type="text" style="width:180px" value="${escH(S.eAuthor || "")}"></label><label>${P("Title", "Title")} <input id="e-title" type="text" style="width:240px" value="${(d.label || "").replace(/"/g, "&quot;")}"></label>
     <button class="primary" id="e-freeze">${P("Freeze the design now", "Freeze")}</button>${rec ? `<a href="/api/est/prereg.md" download><button>${P("Download document (.md)", ".md")}</button></a><a href="/api/est/prereg.json" download><button>${P("Download record (.json)", ".json")}</button></a>` : ""}
     <label class="filebtn"><button type="button" id="e-pr-btn">${P("Load an earlier record", "Load .json")}</button><input type="file" id="e-pr" accept=".json" hidden></label>`;
+  $("e-author").oninput = e => { S.eAuthor = e.target.value; };
   $("e-freeze").onclick = async () => { try { await api("/api/est/freeze", { spec: readSpec(), params: readForm(), author: $("e-author").value, title: $("e-title").value }); await loadEst(); render(); } catch (e) { banner(e.message, "warn"); } };
   $("e-pr-btn").onclick = () => $("e-pr").click();
-  $("e-pr").onchange = async e => { const f = e.target.files[0]; if (!f) return; const r = await fetch("/api/est/prereg/load", { method: "POST", headers: { "Content-Type": "application/octet-stream", "X-JAF": "1", "X-File-Name": encodeURIComponent(f.name) }, body: await f.arrayBuffer() }); const j = await r.json(); if (!r.ok) banner(j.error, "warn"); await loadEst(); render(); };
+  $("e-pr").onchange = async e => { const f = e.target.files[0]; if (!f) return; const r = await fetch("/api/est/prereg/load", { method: "POST", headers: { "Content-Type": "application/octet-stream", "X-JAF": "1", "X-File-Name": encodeURIComponent(f.name) }, body: await f.arrayBuffer() }); $("e-pr").value = ""; const j = await r.json().catch(() => ({})); if (!r.ok) banner(escH(j.error || `The record could not be loaded (${r.status}).`), "warn"); await loadEst(); render(); };
   let ph = `<p>${P("Freezing records what will be measured, how, and what will be estimated, before you look at the data. Deposit the downloaded document with an independent registry (for example OSF) before collecting values: the deposit, not this tool, establishes the date. Values are never part of the record.", "Freeze before data access; deposit externally to establish timing. Values are excluded from the fingerprint.")}</p>`;
   if (rec) {
     ph += `<p><b>${P("Frozen", "Frozen")}</b> ${rec.created.replace("T", " ")} · <span class="mono">${rec.fingerprint.slice(0, 16)}…</span>${rec.values_present_at_freeze.length ? ` · <span class="chip warn">${P(`${rec.values_present_at_freeze.length} values were already present`, `${rec.values_present_at_freeze.length} values present at freeze`)}</span>` : ` · <span class="chip ok">${P("no values present", "no values")}</span>`}</p>`;
@@ -1382,7 +1393,9 @@ function filesTab(box) {
     else if (pv.kind === "error") h += `<div class="banner bad">${escH(pv.message)}</div>`;
     else h += `<p class="note">${P("No preview for this kind of file.", "No preview.")}</p>`;
     if (pv.type === "file") h += `<p><a href="/api/files/raw?path=${fq(en.rel)}">${P("Download this file", "Download")}</a></p>`;
+    if (pv.kind === "package") h += `<p><button id="f-unpack" class="primary">${P("Check and unpack into Imports", "Unpack")}</button> <span class="note">${P("Every file is checked against the package's record first; nothing is unpacked if any differs. Use this for a package copied in from a USB stick or another drive.", "Hashes verified before extraction.")}</span></p>`;
     c2.host.innerHTML = h;
+    if ($("f-unpack")) $("f-unpack").onclick = async () => { const r = await fop({ op: "unpack", path: en.rel, apply: true }); if (r) { banner(r.applied ? P(`Unpacked into <span class="mono">${escH(r.path)}</span>.`, `Unpacked: ${escH(r.path)}`) : `${P("Not unpacked:", "Refused:")} ${escH(r.note || "")}`, "warn"); refresh(); } };
     c2.host.querySelectorAll("[data-pv]").forEach(a => a.onclick = async ev => { ev.preventDefault(); try { S.fPrev = await api(`/api/files/preview?path=${fq(a.dataset.pv)}`); } catch (e) { banner(e.message, "warn"); } render(); });
   }
 
@@ -1466,7 +1479,7 @@ async function poll() {
     $("bar").style.width = (st.progress * 100).toFixed(1) + "%";
     $("prog-label").textContent = st.running ? `${(st.progress * 100).toFixed(0)}% · ${st.label}${st.elapsed ? ` · ${Math.round(st.elapsed)} s` : ""}` : (st.error || "Ready.");
     $("run").disabled = st.running; $("cancel").disabled = !st.running;
-    if (!st.running) { clearInterval(polling); polling = null; if (!st.error) { DATA = await api("/api/result"); statusLine(); render(); banner(""); } else banner(escH(st.error), "warn"); }
+    if (!st.running) { clearInterval(polling); polling = null; if (!st.error) { DATA = await api("/api/result"); statusLine(); if (!["world", "calib", "files"].includes(S.tab)) render(); banner(""); } else banner(escH(st.error), "warn"); }
   } catch (e) { clearInterval(polling); polling = null; banner("The engine is not responding. If you closed its window, start JAF Rule Bench again."); }
 }
 $("run").onclick = async () => { try { await api("/api/run", { params: readForm(), sweep: +$("sweep-n").value }); banner(""); if (!polling) polling = setInterval(poll, 700); poll(); } catch (e) { banner(e.message, "warn"); } };
@@ -1480,6 +1493,8 @@ $("quit").onclick = async () => { try { await api("/api/quit", {}); } catch (e) 
     DATA = await api("/api/result"); if (!DATA.rules) DATA = null;
     buildForm(DATA ? { ...DEFAULTS, ...DATA.params } : DEFAULTS); statusLine(); applyMode();
     const st = await api("/api/state"); if (st.running) polling = setInterval(poll, 700);
+    const ws = await api("/api/world/state").catch(() => ({})); if (ws.running) wstart();
+    const es = await api("/api/est/state").catch(() => ({})); if (es.running) estart();
   } catch (e) { banner("Could not reach the engine. Start JAF Rule Bench again."); buildTabs(); }
 })();
 </script>

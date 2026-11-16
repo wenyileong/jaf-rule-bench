@@ -4,6 +4,7 @@
 from __future__ import annotations
 import io, datetime
 from dataclasses import fields
+import math
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.worksheet.datavalidation import DataValidation
@@ -240,6 +241,24 @@ def _yes(v):
     return str(v).strip().lower() in ("yes", "y", "true", "1")
 
 
+def _fin(v) -> float:
+    """A cell as a finite number. Text such as 'nan', 'inf' or '1e999' is refused like any other non-number."""
+    try:
+        x = float(v)
+    except OverflowError:
+        raise ValueError("too large")
+    if not math.isfinite(x):
+        raise ValueError("not a finite number")
+    return x
+
+
+def _is_help_row(row, cols) -> bool:
+    """Row 2 of a sheet holds grey help text. Users often delete it; then row 2 holds data and must be read."""
+    helps = {str(h).strip() for _k, _l, h, *_ in cols if h}
+    vals = [str(_norm(x)).strip() for x in (row or ()) if _norm(x) not in ("", None)]
+    return not vals or any(v in helps for v in vals)
+
+
 def read_template(data: bytes):
     """Returns (world or None, issues). issues: list of dict(level, where, message)."""
     issues = []
@@ -271,10 +290,12 @@ def read_template(data: bytes):
                 absent.add((sheet, key))
                 warn(sheet, f"Column '{label}' is missing (template from an earlier version); defaults are used.")
         out = []
-        for r in sh.iter_rows(min_row=3, values_only=True):
+        for n, r in enumerate(sh.iter_rows(min_row=2, values_only=True), 2):
             if r is None or all(_norm(x) in ("", None) for x in r):
                 continue
-            out.append((dict((k, _norm(r[i]) if i < len(r) else "") for k, i in idx.items())))
+            if n == 2 and _is_help_row(r, cols):
+                continue
+            out.append((n, dict((k, _norm(r[i]) if i < len(r) else "") for k, i in idx.items())))
         return out
 
     jr = rows("Jurisdictions", J_COLS); lr = rows("Personal links", L_COLS)
@@ -283,7 +304,7 @@ def read_template(data: bytes):
         return None, issues
 
     J, seen = [], set()
-    for n, r in enumerate(jr, 3):
+    for n, r in jr:
         where = f"Jurisdictions, row {n}" + (f" ({r.get('code')})" if r.get("code") else "")
         code = str(r.get("code", "")).strip()
         if not code:
@@ -298,8 +319,8 @@ def read_template(data: bytes):
                     err(where, f"'{dict((k, l) for k, l, *_ in J_COLS)[key]}' is empty.")
                 return None
             try:
-                x = float(v)
-            except (TypeError, ValueError):
+                x = _fin(v)
+            except (TypeError, ValueError, OverflowError):
                 err(where, f"'{dict((k, l) for k, l, *_ in J_COLS)[key]}' must be a number (found '{v}')."); return None
             if x < lo or (hi is not None and x > hi):
                 err(where, f"'{dict((k, l) for k, l, *_ in J_COLS)[key]}' must be between {lo} and {hi if hi is not None else 'any'} (found {x}).")
@@ -324,10 +345,10 @@ def read_template(data: bytes):
         offshare = 0.0
         if off:
             try:
-                offshare = float(offsh)
+                offshare = _fin(offsh)
                 if not 0 <= offshare <= 1:
                     err(where, "'Share incorporated offshore' must be between 0 and 1.")
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):
                 err(where, "'Share incorporated offshore' is needed when an offshore place of incorporation is given.")
         elif offsh not in ("", None) and str(offsh).strip() not in ("0", "0.0"):
             warn(where, "A share incorporated offshore is given but no place of incorporation; it is ignored.")
@@ -345,10 +366,10 @@ def read_template(data: bytes):
         year = None
         if yr not in ("", None):
             try:
-                year = int(float(yr))
+                year = int(_fin(yr))
                 if not 1990 <= year <= 2100:
                     err(where, f"'Automatic exchange from' must be a year (found {yr}).")
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):
                 err(where, f"'Automatic exchange from' must be a year or blank (found '{yr}').")
         if hb is not None and hb == 0 and kind != "hub":
             warn(where, "Holder base is 0: no holders are resident here.")
@@ -380,7 +401,7 @@ def read_template(data: bytes):
 
     L = []
     codes = {j.code for j in J}
-    for n, r in enumerate(lr, 3):
+    for n, r in lr:
         where = f"Personal links, row {n}"
         a, b = str(r.get("from_code", "")).strip(), str(r.get("to_code", "")).strip()
         if a not in codes or b not in codes:
@@ -391,8 +412,8 @@ def read_template(data: bytes):
         if t not in LINK_TYPES:
             err(where, f"Link type must be dual_residence or citizenship (found '{t or 'blank'}')."); continue
         try:
-            s = float(r.get("share", ""))
-        except (TypeError, ValueError):
+            s = _fin(r.get("share", ""))
+        except (TypeError, ValueError, OverflowError):
             err(where, "Share must be a number between 0 and 1."); continue
         if not 0 <= s <= 1:
             err(where, "Share must be between 0 and 1."); continue
@@ -406,14 +427,14 @@ def read_template(data: bytes):
         elif j.offshore_incorporation_in == j.code:
             err(f"Jurisdictions ({j.code})", "The offshore place of incorporation must be a different jurisdiction.")
     T, seen_pairs = [], set()
-    for n, r in enumerate(tr, 3):
+    for n, r in tr:
         where = f"Treaties, row {n}"
         q, p_ = str(r.get("relieving", "")).strip(), str(r.get("taxing", "")).strip()
         if q not in codes or p_ not in codes or q == p_:
             err(where, f"Codes must be two different jurisdictions from the Jurisdictions sheet (found '{q}' and '{p_}')."); continue
         try:
-            rv = float(r.get("relief", ""))
-        except (TypeError, ValueError):
+            rv = _fin(r.get("relief", ""))
+        except (TypeError, ValueError, OverflowError):
             err(where, "Relief must be a number between 0 and 1."); continue
         if not 0 <= rv <= 1:
             err(where, f"Relief must be between 0 and 1 (found {rv})."); continue
@@ -446,13 +467,13 @@ def read_template(data: bytes):
             elif key == "illustrative":
                 s.illustrative = _yes(v)
             elif key == "scenario_year":
-                s.scenario_year = int(float(v))
+                s.scenario_year = int(_fin(v))
             else:
-                x = float(v)
-                if key in ("visibility_exchanged", "treaty_relief") and not 0 <= x <= 1:
+                x = _fin(v)
+                if key in ("visibility_exchanged", "treaty_relief", "mobility_custodial", "mobility_self_hosted") and not 0 <= x <= 1:
                     err("Settings", f"'{label}' must be between 0 and 1."); continue
                 setattr(s, key, x)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             err("Settings", f"'{label}' has an invalid value ('{v}').")
     if any(i["level"] == "error" for i in issues):
         return None, issues
@@ -565,8 +586,10 @@ def _rows_generic(wb, sheet, cols, issues, absent=None):
         elif req:
             issues.append(dict(level="error", where=sheet, message=f"Column '{label}' is missing."))
     out = []
-    for n, r in enumerate(sh.iter_rows(min_row=3, values_only=True), 3):
+    for n, r in enumerate(sh.iter_rows(min_row=2, values_only=True), 2):
         if r is None or all(_norm(x) in ("", None) for x in r):
+            continue
+        if n == 2 and _is_help_row(r, cols):
             continue
         out.append((n, dict((k, _norm(r[i]) if i < len(r) else "") for k, i in idx.items())))
     return out
@@ -575,7 +598,7 @@ def _rows_generic(wb, sheet, cols, issues, absent=None):
 def _num(v):
     if v in ("", None):
         return None
-    return float(v)
+    return _fin(v)
 
 
 def read_design(wb, world: World):
@@ -614,7 +637,7 @@ def read_design(wb, world: World):
             err(where, f"An episode cannot change '{fld or 'blank'}' for {tgt}. Allowed: {', '.join(allowed)}."); continue
         try:
             val = coerce(fld, r.get("value"), for_settings=(tgt == "settings"))
-        except (TypeError, ValueError) as ex:
+        except (TypeError, ValueError, OverflowError) as ex:
             err(where, f"New value for {fld}: {ex if str(ex) else 'invalid'} (found '{r.get('value')}')."); continue
         if fld == "liability_rule" and val not in LIABILITY:
             err(where, f"Unknown liability rule '{val}'."); continue
@@ -674,7 +697,7 @@ def read_design(wb, world: World):
         try:
             val = _num(r.get("value"))
             sd = _num(r.get("sd"))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             err(where, "Value and standard error must be numbers."); continue
         if sd is None or sd <= 0:
             err(where, "A positive standard error is required."); continue
@@ -701,7 +724,7 @@ def read_design(wb, world: World):
             err(where, f"Exchanges based in {code} are described more than once."); continue
         try:
             ws_ = _num(r.get("wash_share")) or 0.0; tv = _num(r.get("turnover"))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             err(where, "Wash-trading share and turnover must be numbers."); continue
         tv = 1.0 if tv is None else tv
         if not 0 <= ws_ < 1:
@@ -718,7 +741,7 @@ def read_design(wb, world: World):
             err(where, f"Unknown parameter '{name or 'blank'}'."); continue
         try:
             vals = {k: _num(r.get(k)) for k in ("value", "lower", "upper", "judgement_low", "judgement_high")}
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             err(where, "Values and bounds must be numbers."); continue
         free = _yes(r.get("free", ""))
         lo = vals["lower"] if vals["lower"] is not None else EST_PARAMS[name]["lo"]
@@ -757,10 +780,10 @@ def read_design(wb, world: World):
                 raise ValueError
             d.concept = c
         if svals.get("estimation_starts") not in (None, ""):
-            d.starts = max(1, min(20, int(float(svals["estimation_starts"]))))
+            d.starts = max(1, min(20, int(_fin(svals["estimation_starts"]))))
         if svals.get("estimation_seed") not in (None, ""):
-            d.seed = int(float(svals["estimation_seed"]))
-    except (TypeError, ValueError):
+            d.seed = int(_fin(svals["estimation_seed"]))
+    except (TypeError, ValueError, OverflowError):
         err("Settings", "Estimation settings: concept must be a or b; starts and seed must be whole numbers.")
     d.label = str(svals.get("design_label") or "")
     d.synthetic = _yes(svals.get("synthetic", ""))

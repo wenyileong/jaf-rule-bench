@@ -136,6 +136,8 @@ def register(payload):
         out.append(dict(kind="Proposition 3", statement=f"On the matched pair, the gap is the costlier failure at every tested level of treaty relief while φ ≤ {max(ok)}.",
                         support="Default world; matched rules X and Y."))
     lk = [(r, payload["rules"][r]["leakage"]) for r in payload["rules"] if payload["rules"][r]["leakage"].get("valid")]
+    # stated only for a rule under which the gap really is the largest destination (review, 15.8)
+    lk = [(r, L) for r, L in lk if all(L["to_gap"] >= (L.get(k) or 0) for k in X.LEAK_KEYS)]
     if lk:
         r, L = max(lk, key=lambda t: t[1]["to_gap"])
         out.append(dict(kind="Proposition 2", statement=f"After a rate rise, the largest single destination of base leaving a jurisdiction under {SHORT[r].lower()} is the gap ({L['to_gap']:.0%} on average across shocks).",

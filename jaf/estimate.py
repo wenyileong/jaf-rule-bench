@@ -74,8 +74,10 @@ def validate_spec(params) -> list:
 
 # ---- chi-square tail (regularised upper incomplete gamma), to avoid a scipy dependency ---------------
 def _gammq(a, x):
-    if x < 0 or a <= 0:
+    if math.isnan(x) or x < 0 or a <= 0:                 # a non-finite statistic is never reported as a perfect fit
         return float("nan")
+    if math.isinf(x):
+        return 0.0
     if x == 0:
         return 1.0
     gln = math.lgamma(a)
@@ -182,7 +184,7 @@ class Model:
     def approximate(self, values: dict):
         """Largest forgone revenue gain among episodes whose rates were accepted as an epsilon-equilibrium (None if none)."""
         key = tuple(round(values[n], 12) for n in sorted(values))
-        eps = [v[2] for (e, k), v in self.cache.items() if k == key and v[2] is not None]
+        eps = [v[2] for (e, k), v in self.cache.items() if k == key and v[1] and v[2] is not None]   # settled ones only
         return max(eps) if eps else None
 
     def jacobian(self, theta, obs, rel_step=5e-3):
@@ -354,13 +356,23 @@ def objective_factory(model: Model, obs):
     return J
 
 
+def _ok_num(v) -> bool:
+    return v is not None and isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+
+
 def estimate(model: Model, override=False, maxfev=None, progress=None, check_first=True, method="lm"):
     d = model.design
     obs = d.targets()
     missing = [o.id for o in obs if o.value is None]
     if missing:
         raise ValueError("Target observations without values: " + ", ".join(missing[:8]) + (" …" if len(missing) > 8 else ""))
+    bad = [o.id for o in obs if not _ok_num(o.value) or not _ok_num(o.sd) or o.sd <= 0]
+    if bad:
+        raise ValueError("Target observations whose value or margin of error is not a usable number (blank, zero, 'nan' "
+                         "or infinite): " + ", ".join(bad[:8]) + (" …" if len(bad) > 8 else ""))
     k = len(model.free)
+    if k == 0:
+        raise ValueError("Nothing to estimate: mark at least one setting as estimated (free).")
     ident0 = identification(model) if check_first else None
     if ident0 is not None and ident0["status"] == "fail" and not override:
         return dict(status="refused", identification_start=ident0,
@@ -414,6 +426,9 @@ def estimate(model: Model, override=False, maxfev=None, progress=None, check_fir
     y = np.array([o.value for o in obs], float)
     z = (m - y) / sd
     Jv = float(z @ z); dof = len(obs) - k
+    if not math.isfinite(Jv):
+        raise ValueError("The model could not be fitted: at the estimate at least one fact has no finite model value "
+                         "(for example, a share whose denominator is empty in some episode). Check the design.")
     spread = [float(np.max(np.abs((r["estimate"] - theta) / (hi - lo)))) for r in runs]
     multi = any(s_ > 0.05 and r["J"] <= best["J"] + max(0.5, 0.05 * best["J"]) for r, s_ in zip(runs, spread))
     params = []
@@ -487,7 +502,7 @@ def validate(model: Model, est: dict, obs=None, progress=None):
         model_sd = math.sqrt(max(0.0, vp) + b2)
         row.update(model_sd=model_sd, param_sd=math.sqrt(max(0.0, vp)), judgement_sd=math.sqrt(b2),
                    lo=float(pr - 1.96 * model_sd), hi=float(pr + 1.96 * model_sd))
-        if o.value is not None:
+        if _ok_num(o.value) and _ok_num(o.sd) and o.sd > 0:
             z = (o.value - pr) / math.sqrt(o.sd ** 2 + model_sd ** 2)
             row.update(z=float(z), passed=bool(abs(z) <= 1.96))
         rows.append(row)

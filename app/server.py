@@ -373,13 +373,24 @@ def est_payload():
                                                                mobility_self_hosted=w.settings.mobility_self_hosted) if w else None)
 
 
+def _save(fn, *args):
+    """Run a save; if it fails, remove the half-written bundle so nothing incomplete is left in Exports."""
+    lib = library()
+    try:
+        return fn(*args)
+    except BaseException:
+        lib.discard_pending()
+        raise
+
+
 def save_est_bundle():
     lib = library()
+    results = copy.deepcopy(dict(EJOB.results))         # a snapshot: an estimation may still be adding results
     folder = lib.new_export("estimation"); dd = str(folder)
     with open(os.path.join(dd, "estimation_results.json"), "w", encoding="utf-8") as fh:
-        json.dump(dict(version=VERSION, results=EJOB.results, design=WJOB.design.to_dict() if WJOB.design else None,
+        json.dump(dict(version=VERSION, results=results, design=WJOB.design.to_dict() if WJOB.design else None,
                        prereg=EJOB.record), fh, indent=1, default=_jsonable)
-    est = EJOB.results.get("estimate")
+    est = results.get("estimate")
     if est and est.get("status") == "ok":
         rows = [["parameter", "estimate", "se", "ci_low", "ci_high", "lower_bound", "upper_bound", "at_bound"]]
         rows += [[p["name"], p["estimate"], p["se"], p["ci_low"], p["ci_high"], p["lower"], p["upper"], p["at_bound"]] for p in est["params"]]
@@ -490,7 +501,7 @@ class Handler(BaseHTTPRequestHandler):
     def _length(self):
         """The request's Content-Length, refusing a missing sign, text or negative value (review finding 15.7)."""
         v = (self.headers.get("Content-Length") or "0").strip()
-        if not v.isdigit():
+        if not (v.isascii() and v.isdigit()):
             raise BadRequest("The request's length is not valid.")
         return int(v)
 
@@ -583,7 +594,7 @@ class Handler(BaseHTTPRequestHandler):
                 data = self._raw()
                 name = self._file_name("file")
                 apply = (q.get("apply") or ["0"])[0] == "1"
-                is_pkg = name.lower().endswith(LIBM.PACKAGE_EXT) or (data[:2] == b"PK" and b"package.json" in data[-65536:])
+                is_pkg = LIBM.Library.is_package(data, name)
                 with FILE_LOCK:
                     if is_pkg:
                         return self._send(200, dict(kind="package", **library().import_package(data, name, apply=apply)))
@@ -603,13 +614,16 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(404, {"error": "Not found"})
 
     def _files_op(self, b):
-        op = b.get("op"); lib = library()
+        op = b.get("op")
         paths = [str(x) for x in (b.get("paths") or [])]
         apply = bool(b.get("apply"))
-        changing = op in ("make_folder", "rename", "move", "copy", "trash", "restore", "empty_trash", "undo", "package")
+        changing = op in ("make_folder", "rename", "move", "copy", "trash", "restore", "empty_trash", "undo", "package", "unpack")
         if changing and tasks_running() and (apply or op in ("make_folder", "rename", "restore", "undo", "package")):
             return self._send(409, {"error": "A task is running. Wait for it to finish before changing files."})
         with FILE_LOCK:
+            lib = library()                               # taken inside the lock: a library move may just have finished
+            if op == "unpack":
+                return self._send(200, dict(kind="package", **lib.unpack(b.get("path", ""), apply=apply)))
             if op == "make_folder":
                 return self._send(200, lib.make_folder(b.get("parent", ""), b.get("name") or "New folder"))
             if op == "rename":
@@ -824,7 +838,7 @@ class Handler(BaseHTTPRequestHandler):
             if not EJOB.results:
                 return self._send(400, {"error": "There are no estimation results to save yet."})
             with FILE_LOCK:
-                return self._send(200, {"folder": save_est_bundle()})
+                return self._send(200, {"folder": _save(save_est_bundle)})
         if self.path == "/api/world/run":
             b = self._body()
             ok = WJOB.start("run", b.get("params", {}))
@@ -843,7 +857,7 @@ class Handler(BaseHTTPRequestHandler):
             if not WJOB.result:
                 return self._send(400, {"error": "There are no coded-world results to save yet."})
             with FILE_LOCK:
-                return self._send(200, {"folder": save_world_bundle(WJOB)})
+                return self._send(200, {"folder": _save(save_world_bundle, WJOB)})
         if self.path == "/api/cancel":
             JOB.cancel_flag = True
             return self._send(200, {"cancelling": True})
@@ -851,8 +865,9 @@ class Handler(BaseHTTPRequestHandler):
             if not JOB.result:
                 return self._send(400, {"error": "There are no results to save yet. Run the model first."})
             with FILE_LOCK:
-                return self._send(200, {"folder": save_bundle(JOB.result)})
+                return self._send(200, {"folder": _save(save_bundle, JOB.result)})
         if self.path == "/api/quit":
+            got = FILE_LOCK.acquire(timeout=600)          # let a move, package or save in progress finish first
             self._send(200, {"bye": True})
             threading.Thread(target=self.server.shutdown, daemon=True).start()
             return

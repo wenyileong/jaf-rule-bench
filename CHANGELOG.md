@@ -9,7 +9,8 @@ Full reasoning for each change, including the logical checks and flaws found, is
 - New program icon (also the interface's browser-tab icon) and Windows file properties.
 - Built, tested (all acceptance tests) and smoke-tested on GitHub's Windows runners; tagged versions produce a draft release.
 - Hardened after an independent review (build plan, section 15.7): a content security policy and escaping in the interface; adopting a library is checked and confirmed; links are not followed; same-named items are kept apart in the Trash and in packages; one-level undo; partial operations are logged; a failed library copy can be retried.
-- Acceptance tests 41 to 61. The model is unchanged; results equal those of 1.0.
+- A second review of the whole program (build plan, section 15.8): safer library moves and copies; packages too large to upload can be unpacked from the library; 'nan' and impossible values in workbooks are refused; text from workbooks is shown exactly as written; refused uploads explain why; running tasks survive a page reload.
+- Acceptance tests 41 to 70. The model is unchanged; results equal those of 1.0.
 
 ## 1.0.0 (2026-10-18, not published separately)
 Version 1.0 is a validation-ready instrument: it can test the model against data, with every method proven on synthetic data first. It contains no results about real countries.

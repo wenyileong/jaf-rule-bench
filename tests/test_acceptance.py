@@ -597,6 +597,7 @@ check("60 review 7 and 8: only items in the Trash can be restored; packaging the
 
 src61 = T / "lib6"; L6 = Library(src61); _bundle(L6, "run")
 (T / "usb2").mkdir(); (T / "usb2" / "JAF.partial").mkdir(); (T / "usb2" / "JAF.partial" / "junk").write_text("x")
+(T / "usb2" / "JAF.partial" / LIBM.PARTIAL_MARK).write_text("left by an earlier attempt")
 _same, _cp = LIBM.same_device, LIBM.shutil.copy2
 LIBM.same_device = lambda a, b: False
 LIBM.shutil.copy2 = lambda a, b: (_ for _ in ()).throw(OSError("disk removed"))
@@ -611,6 +612,131 @@ check("61 review 9: a failed copy of the library removes its unfinished copy and
       not f61["applied"] and clean61 and r61["applied"] and not (T / "usb2" / "JAF.partial").exists()
       and Library(T / "usb2" / "JAF").verify()["problems"] == 0 and src61.exists(),
       f"{f61['applied']} {(T / 'usb2' / 'JAF').exists()} {r61['applied']} {r61.get('note')} {(T / 'usb2' / 'JAF.partial').exists()}")
+
+# ---- second review of version 1.1 (build plan s 15.8) -----------------------------------------------------------
+live = T / "Lib.partial"; Llive = Library(live); _bundle(Llive, "run")
+_rep = LIBM.os.replace
+LIBM.os.replace = lambda a, b: (_ for _ in ()).throw(OSError("file in use"))
+try:
+    m62 = LIBM.move_library(live, str(T / "Lib"), apply=True)
+finally:
+    LIBM.os.replace = _rep
+(T / "Other.partial").mkdir(); (T / "Other.partial" / "thesis.docx").write_text("mine")
+p62 = LIBM.plan_move_library(live, str(T / "Other"))
+check("62 review 2.1: moving the library never deletes the library itself, or a folder of the user's that happens to be named '.partial'",
+      not m62["applied"] and Llive.verify()["problems"] == 0 and len(Llive.verify()["items"]) == 1
+      and not p62["can_apply"] and (T / "Other.partial" / "thesis.docx").exists(), f"{m62.get('problems')} {p62['problems']}")
+
+L7 = Library(T / "lib7"); b7 = _bundle(L7, "run"); L7.make_folder("", "Dest")
+_cp2, n_cp = LIBM.shutil.copy2, []
+def flaky_copy(a, b, **k):
+    n_cp.append(a)
+    if len(n_cp) == 2:
+        raise OSError("disk full")
+    return _cp2(a, b, **k)
+LIBM.shutil.copy2 = flaky_copy
+try:
+    L7.transfer([L7.rel(b7)], "Dest", copy=True, apply=True); c63 = True
+except LibraryError:
+    c63 = False
+finally:
+    LIBM.shutil.copy2 = _cp2
+check("63 review 2.2: a copy that fails partway leaves nothing half-copied behind",
+      not c63 and list((L7.root / "Dest").iterdir()) == [] and L7.check_item(b7)["status"] == "ok")
+
+pz = io.BytesIO()
+with zipfile.ZipFile(pz, "w") as z:
+    z.writestr("project/package.json", "{}"); z.writestr("project/index.js", "x")
+st_zip, d_zip = None, None
+plain_ok = not Library.is_package(pz.getvalue(), "project.zip")
+pk64 = L7.make_package([L7.rel(b7)], "carry")
+L8 = Library(T / "lib8"); shutil.copy2(L7.root / pk64["path"], L8.root / "Packages" / "carry.jafpack")
+u_dry = L8.unpack("Packages/carry.jafpack"); u_go = L8.unpack("Packages/carry.jafpack", apply=True)
+_lim = LIBM.MAX_PACKAGE_FILES; LIBM.MAX_PACKAGE_FILES = 1
+try:
+    L7.make_package([L7.rel(b7)], "too many"); limited = False
+except LibraryError:
+    limited = True
+finally:
+    LIBM.MAX_PACKAGE_FILES = _lim
+check("64 review 2.3 and 2.7: a package copied into the library can be unpacked there; packages over the limits are refused when made; an ordinary zip is not taken for a package",
+      plain_ok and u_dry["intact"] and not u_dry["applied"] and u_go["applied"] and limited)
+
+badidx = io.BytesIO()
+with zipfile.ZipFile(badidx, "w") as z:
+    z.writestr("items/001/a.txt", "1"); z.writestr("package.json", json.dumps({"files": [7, {"path": "001/a.txt", "bytes": "abc"}]}))
+try:
+    L8.inspect_package(badidx.getvalue()); refused65 = False
+except LibraryError:
+    refused65 = True
+L8.make_folder("", "Z"); (L8.root / "Z" / "f.txt").write_text("z")
+t65 = L8.trash(["Z/f.txt", "Z/f.txt/", "./Z/f.txt"], apply=True)
+check("65 review 2.8: a package with a malformed index is refused cleanly; the same item named twice is moved to the Trash once",
+      refused65 and t65["applied"] and len(L8.trash_list()) == 1)
+
+before66 = sorted(p.relative_to(T / "usb2" / "JAF").as_posix() for p in LIBM.walk_files(T / "usb2" / "JAF"))
+log66 = (T / "usb2" / "JAF" / ".jaf" / "log.jsonl").read_text(encoding="utf-8")
+pa = LIBM.plan_adopt(str(T / "usb2" / "JAF"))
+after66 = sorted(p.relative_to(T / "usb2" / "JAF").as_posix() for p in LIBM.walk_files(T / "usb2" / "JAF"))
+check("66 review 2.9: checking a library before using it changes nothing in it",
+      before66 == after66 and log66 == (T / "usb2" / "JAF" / ".jaf" / "log.jsonl").read_text(encoding="utf-8") and pa["bundles"] >= 1)
+
+L9 = Library(T / "lib9"); f67 = L9.new_export("world"); (f67 / "half.json").write_text("{")
+L9.discard_pending()
+check("67 review 2.5: a save that fails leaves no half-written bundle in Exports", not f67.exists() and L9.listing("Exports")["entries"] == [])
+
+wb68 = load_workbook(io.BytesIO(write_template(illustrative_world())))
+first = wb68["Jurisdictions"].cell(3, 1).value
+wb68["Jurisdictions"].delete_rows(2)
+bio = io.BytesIO(); wb68.save(bio)
+w68, iss68 = read_template(bio.getvalue())
+wb69 = load_workbook(io.BytesIO(write_template(illustrative_world())))
+sh = wb69["Jurisdictions"]; hdr = [str(c.value or "").rstrip(" *") for c in sh[1]]
+sh.insert_rows(4, 3)                                     # three blank rows, then an impossible value further down
+sh.cell(8, hdr.index("Holder base (relative)") + 1, "nan")
+st69 = wb69["Settings"]
+for row in st69.iter_rows(min_row=2):
+    if row[3].value == "mobility_custodial":
+        row[1].value = -5
+bio = io.BytesIO(); wb69.save(bio)
+w69, iss69 = read_template(bio.getvalue())
+msgs = " | ".join(f"{i['where']}: {i['message']}" for i in iss69 if i["level"] == "error")
+check("68 review 3.3, 3.4 and 3.7: deleting the grey help row loses no data; 'nan' and out-of-range settings are refused, with the sheet's real row number",
+      w68 is not None and w68.jurisdictions[0].code == first and w69 is None and "row 8" in msgs and "Ease of holding" in msgs, msgs[:160])
+
+import jaf.design as DES
+from jaf import report
+try:
+    DES.coerce("exchange_presence", "inf"); fin_ok = False
+except ValueError:
+    fin_ok = True
+w70 = illustrative_world(); d70 = illustrative_design(w70)
+d70.observations[0].value = float("nan")
+try:
+    estimate(Model(w70, d70, Params()), check_first=False); nan_ok = False
+except ValueError as exc:
+    nan_ok = "not a usable number" in str(exc)
+d71 = illustrative_design(w70)
+for p in d71.params:
+    p.free = False
+try:
+    estimate(Model(w70, d71, Params()), override=True, check_first=False); k0 = False
+except ValueError as exc:
+    k0 = "Nothing to estimate" in str(exc)
+one = solve(MixedCompiled(World([Jurisdiction("A", "A")]), Params()), "a")
+chi_ok = math.isnan(chi2_sf(float("nan"), 5)) and chi2_sf(float("inf"), 5) == 0.0
+check("69 review 1.1, 1.2, 1.4, 1.5 and 1.6: unusable data values, a fit with nothing to estimate and a one-state world are refused or handled; a non-finite statistic is never shown as a perfect fit",
+      fin_ok and nan_ok and k0 and chi_ok and np.all(np.isfinite(one["tau"])))
+
+dr = json.load(open("app/default_result.json", encoding="utf-8"))
+reg_default = [f["statement"] for f in report.register(dr)["model_outputs"] if f["kind"] == "Proposition 2"]
+dr2 = copy.deepcopy(dr)
+for r in dr2["rules"]:
+    if dr2["rules"][r]["leakage"].get("valid"):
+        L_ = dr2["rules"][r]["leakage"]; L_["migration"] = max(L_.get("migration") or 0, L_["to_gap"] + 0.1)
+reg_none = [f for f in report.register(dr2)["model_outputs"] if f["kind"] == "Proposition 2"]
+check("70 review 1.3: the register states Proposition 2 only for a rule under which the gap really is the largest destination",
+      len(reg_default) == 1 and reg_none == [])
 shutil.rmtree(T, ignore_errors=True)
 
 print(f"\n{sum(results)}/{len(results)} passed")
