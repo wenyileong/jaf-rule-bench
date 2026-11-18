@@ -2,8 +2,8 @@ cff-version: 1.2.0
 message: "If you use this software, please cite the archived release you used, with its DOI."
 title: "JAF Rule Bench"
 type: software
-version: "1.1.0"
-date-released: "2026-11-11"
+version: "1.1.1"
+date-released: "2026-11-18"
 authors:
   - family-names: "LEONG"
     given-names: "Wen Yi"
@@ -16,7 +16,7 @@ keywords:
   - international taxation
   - assignment rules
 # doi: "10.5281/zenodo.XXXXXXX"   (add the DOI reserved on Zenodo for this version)
-license:
-  - PolyForm-Noncommercial-1.0.0
-  - CC-BY-NC-4.0
+# One licence only: Zenodo cannot read a list. The documents, templates and data are under CC BY-NC 4.0
+# (LICENSE-docs.txt); see the README.
+license: PolyForm-Noncommercial-1.0.0
 repository-code: "https://github.com/wenyileong/jaf-rule-bench"
