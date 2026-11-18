@@ -60,7 +60,9 @@ See `docs/build_plan.md`, sections 12 to 14, and `docs/model_specification.md`, 
 
 Cite the archived version used, with its DOI (each version is deposited on Zenodo):
 
-> Wen Yi LEONG, *JAF Rule Bench* (version 1.1.0, 2026) <https://doi.org/[DOI]>
+> Wen Yi LEONG, *JAF Rule Bench* (version 1.1.1, 2026) <https://doi.org/10.5281/zenodo.24328787>
+
+For another version, use the DOI shown on its Zenodo record.
 
 GitHub's "Cite this repository" button (from `CITATION.cff`) gives other formats.
 
