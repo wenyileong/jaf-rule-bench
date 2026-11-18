@@ -2,6 +2,10 @@
 
 Full reasoning for each change, including the logical checks and flaws found, is in `docs/build_plan.md`.
 
+## 1.1.1 (2026-11-18)
+
+- Citation metadata: `CITATION.cff` now names a single licence (the code licence), so that Zenodo can archive the release and issue a DOI. Version 1.1.0 was not archived because Zenodo could not read a list of licences. The program is unchanged from 1.1.0; the documents remain under CC BY-NC 4.0.
+
 ## 1.1.0 (2026-11-11)
 - File manager ("Your files" tab), modelled on the A-share Company Intelligence data folder: one library for every export and import; previews; manifests with SHA-256 for every saved bundle; folders, rename, move and copy with a dry run; Trash with restore; undo of the last change; an activity log; packages (.jafpack) checked by hash for moving results between computers; moving or adopting the whole library (copy and verify, old folder untouched).
 - A copy of every workbook and pre-registration record loaded is kept in Imports.
