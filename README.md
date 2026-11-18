@@ -62,7 +62,7 @@ Cite the archived version used, with its DOI (each version is deposited on Zenod
 
 > Wen Yi LEONG, *JAF Rule Bench* (version 1.1.1, 2026) <https://doi.org/10.5281/zenodo.24328787>
 
-For another version, use the DOI shown on its Zenodo record.
+For another version, use the DOI shown on its Zenodo record. To refer to the software in general rather than to a particular version, the DOI <https://doi.org/10.5281/zenodo.24328786> covers all versions and always resolves to the latest; for results, cite the version actually used.
 
 GitHub's "Cite this repository" button (from `CITATION.cff`) gives other formats.
 

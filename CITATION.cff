@@ -16,6 +16,13 @@ keywords:
   - international taxation
   - assignment rules
 doi: "10.5281/zenodo.24328787"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.24328787"
+    description: "This version (1.1.1)."
+  - type: doi
+    value: "10.5281/zenodo.24328786"
+    description: "All versions; always resolves to the latest release. Cite the version DOI where possible."
 # One licence only: Zenodo cannot read a list. The documents, templates and data are under CC BY-NC 4.0
 # (LICENSE-docs.txt); see the README.
 license: PolyForm-Noncommercial-1.0.0
