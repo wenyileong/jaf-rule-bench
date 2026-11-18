@@ -2,7 +2,17 @@
 
 Full reasoning for each change, including the logical checks and flaws found, is in `docs/build_plan.md`.
 
-## 1.0.0 (2026-10-18)
+## 1.1.0 (2026-11-11)
+- File manager ("Your files" tab), modelled on the A-share Company Intelligence data folder: one library for every export and import; previews; manifests with SHA-256 for every saved bundle; folders, rename, move and copy with a dry run; Trash with restore; undo of the last change; an activity log; packages (.jafpack) checked by hash for moving results between computers; moving or adopting the whole library (copy and verify, old folder untouched).
+- A copy of every workbook and pre-registration record loaded is kept in Imports.
+- The local engine accepts requests only at its own address, and changes only from its own interface.
+- New program icon (also the interface's browser-tab icon) and Windows file properties.
+- Built, tested (all acceptance tests) and smoke-tested on GitHub's Windows runners; tagged versions produce a draft release.
+- Hardened after an independent review (build plan, section 15.7): a content security policy and escaping in the interface; adopting a library is checked and confirmed; links are not followed; same-named items are kept apart in the Trash and in packages; one-level undo; partial operations are logged; a failed library copy can be retried.
+- A second review of the whole program (build plan, section 15.8): safer library moves and copies; packages too large to upload can be unpacked from the library; 'nan' and impossible values in workbooks are refused; text from workbooks is shown exactly as written; refused uploads explain why; running tasks survive a page reload.
+- Acceptance tests 41 to 70. The model is unchanged; results equal those of 1.0.
+
+## 1.0.0 (2026-10-18, not published separately)
 Version 1.0 is a validation-ready instrument: it can test the model against data, with every method proven on synthetic data first. It contains no results about real countries.
 - New "Test against data" tab, supporting single-reform designs (such as India 2022) and staggered adoption of information exchange (such as the CARF waves).
 - Data layer: Episodes, Data, Measurement, Estimation and Hypotheses sheets in the template, with provenance, quality grades and validation.

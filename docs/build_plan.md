@@ -384,5 +384,122 @@ The reviewer found the measurement definitions, the χ² tail (agreeing with a r
 ### 14.8 What remains outside 1.0
 
 - **Licence:** not yet chosen; until then all rights are reserved.
-- **Test on a Windows machine:** the executable has been built and smoke-tested under Wine only.
+- **Test on a Windows machine:** from 1.0.0 the executable is built, and the acceptance tests and a smoke test are run, on GitHub's Windows runners (Windows Server). A run on a Windows desktop by a user remains advisable.
 - **The empirical piece:** coding and verifying the real sample; collecting data for the India 2022 and CARF designs; freezing and depositing the pre-registration before data access; estimation and validation. Section 14.4, items 3 and 4, should inform its design.
+
+---
+
+## 15. Version 1.1: file manager (exports, imports, transfers)
+
+### 15.1 Purpose
+
+The author asked for a file manager modelled on the A-share Company Intelligence software: one place that shows every export and import, and lets files be moved between folders and carried from one device to another. Until now the program saved bundles into Documents/JAF Rule Bench with no index, kept no record of what was loaded, and offered no way to move, check or share files from within the program.
+
+The A-share software's data-folder modules (`files.py`, `datafolder.py`) set the principles adopted here: a dry run before any change; nothing deleted without an explicit, separate step; copies verified by hash; every operation recorded; the last operation undoable; the old folder left untouched after a copy to another drive; a warning for synced folders.
+
+### 15.2 Components
+
+| # | Component | What it does |
+|---|---|---|
+| F1 | Library (scaffolding) | One folder (default Documents/JAF Rule Bench) with `Exports/`, `Imports/`, `Packages/` and the user's own folders; a program folder `.jaf/` holds the log, the Trash and undo records. The location is a setting, kept in the program's settings file |
+| F2 | Manifests (scaffolding) | Every bundle the program saves carries `manifest.json`: kind, title, time, tool version, and the size and SHA-256 of every file. Integrity is shown in the list (sizes) and checked in full on request (hashes) |
+| F3 | Request guard (scaffolding) | The local server accepts requests only for its own address (against DNS rebinding) and changes only on requests carrying the interface's own header (against other web pages posting to it) |
+| F4 | Import record | A copy of every workbook or pre-registration record loaded, with its hash, kept in `Imports/`, so the inputs of every result can be found later |
+| F5 | File operations | New folder, rename, move, copy, move to Trash, restore, empty Trash; each move, copy and Trash has a dry run; undo of the last operation; log of all operations |
+| F6 | Preview | Tables (CSV), text and JSON, workbooks (each sheet's first rows), images, bundle manifests and packages, inside the program |
+| F7 | Device to device | A package (`.jafpack`, a zip with an index of SHA-256 hashes) of any chosen items, downloadable through the browser; import of a package (checked for unsafe paths, links and size, and verified by hash before anything is extracted) |
+| F8 | Moving or adopting the library | Move the whole library to another folder or drive (rename on the same drive; otherwise copy, verify every file, then switch; the old folder is untouched), or adopt a library copied from another device (verified, then used) |
+| F9 | Interface | A "Your files" tab: folder path, file list with integrity, preview, toolbar, Trash, activity log, library location; plain and technical explanations |
+
+### 15.3 Logical evaluation (before building)
+
+| # | Issue | Severity | Resolution |
+|---|---|---|---|
+| 1 | **Other web pages can send requests to a local server.** A malicious page could post to 127.0.0.1 and move or delete files; through DNS rebinding it could also read them | Serious (would be fatal for a file manager) | F3: the server checks the Host header on every request and requires a custom header on every change (browsers cannot send it across sites without permission the server never gives). Applied to all endpoints, not only the new ones |
+| 2 | **Paths outside the library.** A crafted path (`..`, an absolute path, a drive letter) could reach any file | Serious | Every path is resolved and refused unless it lies inside the library; the program's own folder is refused except for the Trash |
+| 3 | **Unsafe packages.** A package from elsewhere could write outside the library (zip slip), hold links, or expand to fill the disk | Serious | Packages are inspected before extraction: absolute paths, `..`, links, more than 20,000 files or 2 GB are refused; every file is verified against the index; nothing is extracted unless all checks pass |
+| 4 | **Moving the library while a task runs or saves** | Moderate | Library moves and file operations are refused while a task runs; operations are serialised by a lock |
+| 5 | **Undo after later changes.** Undoing an old operation after others could misplace files | Moderate | Only the most recent undoable operation can be undone; emptying the Trash or moving the library ends the undo chain; undo never overwrites an occupied path |
+| 6 | **Lost files.** Deleting or a failed copy could lose work | Moderate | Delete moves to the Trash with its origin recorded; only "Empty Trash", with its own confirmation, deletes; a copy to another drive is verified file by file before the setting switches |
+| 7 | **Synced folders and placeholders** | Minor | A warning when the target is OneDrive, Dropbox, Google Drive or iCloud |
+| 8 | **Large uploads held in memory** | Minor | Uploads above 512 MB are refused with a message; larger transfers go by moving the library or by copying the package file directly |
+| 9 | **Edited exports reported as damaged.** A user who opens and saves a CSV in Excel changes it | Not a flaw | Reported as "changed", not as an error; the manifest shows what was saved |
+| 10 | **Old bundles** saved by 1.0 at the top of the folder, without manifests | Minor | Listed as ordinary folders; nothing is moved automatically |
+
+**Verdict.** No fatal flaw, provided the request guard (issue 1) and path confinement (issues 2 and 3) are built first, as scaffolding, before any operation that changes files.
+
+### 15.4 Build order
+
+1. Scaffolding: the library and its settings (F1), manifests (F2), the request guard (F3); saves routed through the library.
+2. Features: import record (F4), operations with dry run, Trash and undo (F5), preview (F6), packages (F7), library move and adoption (F8), interface (F9).
+3. Tests, then an independent review, then fixes.
+
+### 15.5 Acceptance tests added for 1.1
+
+- 41: a saved bundle is intact against its manifest; a change that keeps the size is caught by the full SHA-256 check.
+- 42: every path outside the library (`..`, absolute paths, drive letters, home-relative paths) and the program's own folder are refused.
+- 43: copy has a dry run that changes nothing; copies are verified; a taken name becomes "name (2)"; a folder cannot be moved into itself; the standard folders stay.
+- 44: the Trash keeps each item's origin; undo restores; emptying is a separate step and ends the undo chain.
+- 45: names are made valid on every system (a reserved Windows name such as CON is changed); a taken name is refused; undo restores; standard folders keep their names.
+- 46: a package carried to a second library arrives intact (hashes equal); a tampered package, a package with an unsafe path and a file that is not a package are refused, and nothing is extracted.
+- 47: moving the library is refused into itself or a non-empty folder; the dry run changes nothing; on the same drive it renames; to another drive it copies, verifies and leaves the old folder.
+- 48: adopting a library checks every saved result first.
+- 49: imports are kept with their fingerprint; tables and workbooks preview; a damaged file is reported, not fatal.
+- 50: the server refuses changes without the interface's header and requests for other host names; loads are recorded in Imports; traversal through the server is refused.
+
+The Windows build's smoke test also saves a bundle, checks it is listed as intact, packages and downloads it, and confirms that a change without the interface's header is refused.
+
+### 15.6 Independent review
+
+After tests 41 to 50 passed, a separate reviewer who had not seen the build examined the library, the server and the interface. Its confirmed findings, and how each was fixed, are in 15.7. Plausible findings (risks the reviewer could not confirm but which were cheap to remove) were fixed as well.
+
+### 15.7 Review findings and fixes
+
+| No. | Finding | Fix | Test |
+|---|---|---|---|
+| 1 | Text from a manifest, package index or error message reached the page unescaped, so a crafted file could run script in the interface; "use a library already there" switched to any folder at once | Every value from files and the server is escaped; the page carries a Content-Security-Policy that admits only its own script (a fresh nonce per load); responses carry `Cross-Origin-Resource-Policy: same-origin`, `nosniff` and `frame-ancestors 'none'`; adopting is two steps (check, then confirm) and only for a folder that already holds the program's `.jaf` folder | 51, 53 |
+| 2 | Two items with the same name moved to the Trash overwrote each other's record of where they came from | Each item has its own slot in the Trash, with an index per batch | 44, 55 |
+| 3 | A package could lose files when two items had the same name, or names differed only in case | Items are numbered inside the package and given free names on unpacking ("x", "x (2)"); names that would clash on Windows or macOS are refused before anything is unpacked; hashes are checked again after unpacking, in a temporary folder | 46, 56 |
+| 4 | Undoing twice redid a copy, and undo walked back further than one step | One level only: an undo, or any change that cannot be undone, ends the chain; undoing a copy moves the copies to the Trash | 57 |
+| 5 | An operation that stopped partway (a file open elsewhere) left no record | What was done is logged, marked partial, and can be undone; the message says how many items were done | 58 |
+| 6 | Links (symbolic links, junctions) were followed, so a link could expose or alter files outside the library | A path through a link is refused; links are skipped by listings, copies, packages, hashing and library moves | 59 |
+| 7 | Restore accepted any path inside the program's own folder | Only an item at the exact depth of a Trash slot can be restored | 60 |
+| 8 | Packaging the Packages folder included the package being written | The package is written to a temporary folder first and moved into Packages when complete | 60 |
+| 9 | A failed copy of the library left an unfinished copy that blocked a second attempt | The copy goes to `<target>.partial`, is verified, and is renamed into place; on failure the partial copy is removed | 61 |
+| 10 | A request body that was not a JSON object left the browser without an answer | The body must be a JSON object; every request gets an answer (400 with a message, or 500); a missing, negative or non-numeric length is refused | 52 |
+| P | Plausible: a library on an unplugged drive silently became the default; saves were not serialised with file operations; case-insensitive name clashes; reserved names such as `CONIN$`; whole package entries read into memory; emptying the Trash logged a full deletion when items remained; misleading wording on adopt and undo | The unavailable library is reported and the setting kept (no folder is created in its place); saves run under the file lock; names are compared without regard to case; the reserved list is extended; hashes are streamed; emptying reports what is left; wording corrected in the interface and the user guide | 54 and above |
+
+All 61 acceptance tests pass. The interface was checked in a browser in both reading modes and both colour schemes, with no script errors and no breach of the security policy; a file named, and a manifest filled, with markup were shown as text.
+
+
+### 15.8 Second review (whole program)
+
+A second independent review covered the whole program in three parts: the file library and server, the model and estimation core, and the workbook reader and interface. Each finding below was reproduced before it was fixed, and the reviewers' own reproduction scripts were run again against the fixed code.
+
+| Ref. | Finding | Fix | Test |
+|---|---|---|---|
+| 2.1 | Moving the library could delete the library itself, or a user's folder, if either was named like the temporary copy (`<target>.partial`), and then report success | The temporary copy carries a marker; a `.partial` folder without it, or one that is or contains the library, is refused; the number of files copied is checked before the switch; links not copied are reported | 61, 62 |
+| 2.2 | A copy that failed partway left a half-copied folder and said nothing had changed | The partial copy is removed | 63 |
+| 2.3 | Packages larger than the import limits could be made but never imported | Limits are checked when a package is made; a package copied into the library by hand can be unpacked there ("Unpack") | 64 |
+| 2.4 | A file operation queued behind a library move could act on the old library | The library is looked up inside the file lock | 50 to 54 |
+| 2.5 | Saving during an estimation could fail on results still being written, and a failed save left a half-written bundle | Results are copied before saving; a failed save is removed | 67 |
+| 2.6 | Undo could not reverse a rename that changed only letter case (Windows, macOS) | Recognised and reversed | (Windows build) |
+| 2.7 | An ordinary zip that mentioned `package.json` was taken for a package and refused | Only a `.jafpack`, or a zip with the package index at its top level, is treated as a package | 64 |
+| 2.8 | A package with a malformed index, or an unusual length header, crashed the request; the same item named twice was trashed twice | Refused with a message; items are compared by their resolved path | 65, 52 |
+| 2.9 | One unreadable folder broke every listing; checking a library before adopting it wrote to it; quitting could interrupt a move | Unreadable folders are skipped; the check is read only; quitting waits for a running file operation | 66 |
+| 1.1 | A target value of 'nan' or infinity produced an "ok" estimate at the starting values | Non-finite values and margins of error are refused by the reader and by the estimator; a non-finite fit is an error | 68, 69 |
+| 1.2 | The chi-squared tail probability reported 1.0 (a perfect fit) for a non-finite statistic | Returns not-a-number, or 0 for infinity | 69 |
+| 1.3 | The findings register could state Proposition 2 for a rule under which the gap was not the largest destination | Stated only where it holds; the default register and its fingerprint are unchanged | 70 |
+| 1.4 to 1.7 | Estimating with nothing free crashed; an episode could set an infinite value; a one-state world crashed the solver; unsettled episodes were also reported as approximately settled | Refused with a message; refused; handled; reported only for settled episodes | 69 |
+| 3.1 | Text from a workbook (names, sources, notes, hypotheses, messages) reached the page as markup: an OSCOLA source's URL in angle brackets vanished, and a crafted name could hide the "invented states" warning | All text from workbooks and the engine is escaped on arrival; exported CSV files keep the original text | browser check |
+| 3.2 | An upload refused by the engine (a task running, a file too large) showed no message; some buttons failed silently | Every refusal is shown | browser check |
+| 3.3 | Deleting the grey help row silently dropped the first data row | The help row is recognised by its text, wherever it is | 68 |
+| 3.4, 3.7 | 'nan', '1e999' and out-of-range ease-of-moving settings were accepted or crashed the reader; error messages gave the wrong row number when blank rows were present | Refused with a message; the sheet's real row number is given | 68 |
+| 3.5, 3.6 | Reloading the page lost track of a running world or estimation task; a finished model run cleared unsaved entries on other tabs | Running tasks are picked up on load; other tabs are not redrawn; the author's name is kept | browser check |
+| 3.8 | At phone width some tabs scrolled sideways | Controls wrap | browser check |
+
+Not changed: a formula cell without a saved value is still reported as empty (open and save the workbook in Excel first), and very large formatted sheets load slowly; neither loses or alters data.
+
+All 70 acceptance tests pass. The interface was checked again in a browser in both reading modes, both colour schemes and at 360 pixels wide, with no script errors.
+
+The model is unchanged from 1.0. The version stamp in the bundled default results was changed from 1.0 to 1.1 without re-running them, since every number is the same.

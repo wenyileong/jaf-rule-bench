@@ -8,7 +8,7 @@ A design says which observed facts the model is to be confronted with, under whi
 with blank values is what is frozen for pre-registration before any data are examined.
 """
 from __future__ import annotations
-import copy, hashlib, json
+import copy, hashlib, json, math
 from dataclasses import dataclass, field, asdict, fields
 from .world import World, Jurisdiction, Settings
 
@@ -167,6 +167,8 @@ def coerce(field_name, value, for_settings=False):
         if field_name == "scenario_year":
             return int(float(value))
         x = float(value)
+        if not math.isfinite(x):
+            raise ValueError("must be a finite number")
         if not 0 <= x <= 1:
             raise ValueError("must be between 0 and 1")
         return x
@@ -183,6 +185,8 @@ def coerce(field_name, value, for_settings=False):
             return None
     if "float" in t:
         x = float(value)
+        if not math.isfinite(x):
+            raise ValueError("must be a finite number")
         if field_name in ("visibility_domestic_custodial", "visibility_self_hosted", "residence_topup",
                           "effective_rate", "offshore_incorporation_share") and not 0 <= x <= 1:
             raise ValueError("must be between 0 and 1")

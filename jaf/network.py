@@ -14,7 +14,7 @@ def flows(Q, gapj, home_bias):
     flows to them are not cross-border flows between jurisdictions.
     """
     N = Q.shape[0]
-    T = np.full((N, N), (1 - home_bias) / (N - 1)); np.fill_diagonal(T, home_bias)
+    T = np.full((N, N), (1 - home_bias) / (N - 1) if N > 1 else 0.0); np.fill_diagonal(T, home_bias if N > 1 else 1.0)
     econ = Q.sum(0) + gapj                               # all digital-asset base by economic location
     R = np.divide(Q, econ[None, :], out=np.zeros_like(Q), where=econ[None, :] > 0)   # R[n', j']
     F = Q @ T @ R.T                                      # F[n, n']

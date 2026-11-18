@@ -3,7 +3,8 @@
 """Local server for JAF Rule Bench: serves the interface and runs the model on request.
 Binds to 127.0.0.1 only; nothing leaves the machine."""
 from __future__ import annotations
-import json, os, sys, threading, time, datetime, traceback, socket, webbrowser, csv, io, copy
+import base64, json, os, sys, threading, time, datetime, traceback, socket, webbrowser, csv, io, copy, subprocess, platform
+from urllib.parse import urlsplit, parse_qs, unquote, quote
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from jaf.params import Params, PARAM_SPEC, VERSION
 from jaf import report
@@ -15,6 +16,7 @@ from jaf import estimate as EST
 from jaf import recovery as REC
 from jaf import prereg as PRE
 from jaf.measure import QUANTITIES
+from jaf import library as LIBM
 
 
 def resource(name):
@@ -31,11 +33,54 @@ def data_dir():
     return d
 
 
-def export_dir():
+def default_library():
     docs = os.path.join(os.path.expanduser("~"), "Documents")
     base = docs if os.path.isdir(docs) else os.path.expanduser("~")
-    d = os.path.join(base, "JAF Rule Bench"); os.makedirs(d, exist_ok=True)
-    return d
+    return os.path.join(base, "JAF Rule Bench")
+
+
+def load_settings():
+    try:
+        with open(os.path.join(data_dir(), "settings.json"), encoding="utf-8") as fh:
+            d = json.load(fh)
+        return d if isinstance(d, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def save_settings(st):
+    with open(os.path.join(data_dir(), "settings.json"), "w", encoding="utf-8") as fh:
+        json.dump(st, fh, indent=1)
+
+
+_LIB = None
+_LIB_WARNING = ""                     # set when the chosen library is unavailable (review finding, 15.7)
+FILE_LOCK = threading.Lock()          # file operations one at a time (build plan s 15.3, issue 4)
+MAX_UPLOAD = 512 * 1024 ** 2         # s 15.3, issue 8
+
+
+def library():
+    """The file library (build plan s 15, F1): the folder for exports and imports."""
+    global _LIB, _LIB_WARNING
+    want = load_settings().get("library") or default_library()
+    if _LIB is None or str(_LIB.root) != str(LIBM.Path(want).expanduser().resolve()):
+        try:
+            _LIB = LIBM.Library(want)
+            _LIB_WARNING = ""
+        except (OSError, LIBM.LibraryError):               # e.g. a removable drive that is not connected
+            if _LIB is None or str(_LIB.root) != str(LIBM.Path(default_library()).resolve()):
+                _LIB = LIBM.Library(default_library())
+            _LIB_WARNING = (f"Your chosen library ({want}) is not available, perhaps because its drive is not connected. "
+                            "Until it is, files are saved in the default library shown here. Your setting has not been changed.")
+    return _LIB
+
+
+def export_dir():
+    return str(library().root)
+
+
+def tasks_running():
+    return bool((JOB and JOB.running) or (WJOB and WJOB.running) or (EJOB and EJOB.running))
 
 
 class Job:
@@ -328,13 +373,24 @@ def est_payload():
                                                                mobility_self_hosted=w.settings.mobility_self_hosted) if w else None)
 
 
+def _save(fn, *args):
+    """Run a save; if it fails, remove the half-written bundle so nothing incomplete is left in Exports."""
+    lib = library()
+    try:
+        return fn(*args)
+    except BaseException:
+        lib.discard_pending()
+        raise
+
+
 def save_est_bundle():
-    stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
-    dd = os.path.join(export_dir(), f"estimation_{stamp}"); os.makedirs(dd, exist_ok=True)
+    lib = library()
+    results = copy.deepcopy(dict(EJOB.results))         # a snapshot: an estimation may still be adding results
+    folder = lib.new_export("estimation"); dd = str(folder)
     with open(os.path.join(dd, "estimation_results.json"), "w", encoding="utf-8") as fh:
-        json.dump(dict(version=VERSION, results=EJOB.results, design=WJOB.design.to_dict() if WJOB.design else None,
+        json.dump(dict(version=VERSION, results=results, design=WJOB.design.to_dict() if WJOB.design else None,
                        prereg=EJOB.record), fh, indent=1, default=_jsonable)
-    est = EJOB.results.get("estimate")
+    est = results.get("estimate")
     if est and est.get("status") == "ok":
         rows = [["parameter", "estimate", "se", "ci_low", "ci_high", "lower_bound", "upper_bound", "at_bound"]]
         rows += [[p["name"], p["estimate"], p["se"], p["ci_low"], p["ci_high"], p["lower"], p["upper"], p["at_bound"]] for p in est["params"]]
@@ -353,7 +409,16 @@ def save_est_bundle():
     if WJOB.world is not None:
         with open(os.path.join(dd, "world_and_design.xlsx"), "wb") as fh:
             fh.write(write_template(WJOB.world, design=WJOB.design))
+    lib.finish_export(folder, "estimation", "Estimation results", **_provenance())
     return dd
+
+
+def _provenance():
+    """What a saved bundle was made from (build plan s 15, F2)."""
+    from jaf.design import world_fingerprint
+    w = WJOB.world if WJOB else None
+    return dict(world_label=w.settings.label if w else None, world_fingerprint=world_fingerprint(w) if w else None,
+                design_label=(WJOB.design.label if WJOB and WJOB.design else None))
 
 
 JOB = None
@@ -362,8 +427,8 @@ EJOB = None
 
 
 def save_bundle(res):
-    stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
-    d = os.path.join(export_dir(), f"run_{stamp}"); os.makedirs(d, exist_ok=True)
+    lib = library()
+    folder = lib.new_export("run"); d = str(folder)
     with open(os.path.join(d, "results.json"), "w", encoding="utf-8") as fh:
         json.dump(res, fh, indent=1)
     rows = [["rule", "concept", "effective_rate", "mean_nominal_rate", "revenue", "gap", "overlap", "unobserved", "exit", "converged"]]
@@ -375,13 +440,14 @@ def save_bundle(res):
         csv.writer(fh).writerows(rows)
     with open(os.path.join(d, "parameters.json"), "w", encoding="utf-8") as fh:
         json.dump(res["params"], fh, indent=1)
+    lib.finish_export(folder, "run", "Rule comparison (invented world)", generated=res.get("generated"), seed=res["params"].get("seed"))
     return d
 
 
 def save_world_bundle(wj):
     res = wj.result
-    stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
-    d = os.path.join(export_dir(), f"world_{stamp}"); os.makedirs(d, exist_ok=True)
+    lib = library()
+    folder = lib.new_export("world"); d = str(folder)
     with open(os.path.join(d, "world_results.json"), "w", encoding="utf-8") as fh:
         json.dump(dict(result=res, counterfactual=wj.cf), fh, indent=1)
     with open(os.path.join(d, "coded_world.xlsx"), "wb") as fh:
@@ -398,7 +464,12 @@ def save_world_bundle(wj):
                          x["claimed_primary"][i], x["placed_here"][i], code not in res["unverified"]])
     with open(os.path.join(d, "jurisdictions.csv"), "w", newline="", encoding="utf-8") as fh:
         csv.writer(fh).writerows(rows)
+    lib.finish_export(folder, "world", "Coded-world results", generated=res.get("generated"), **_provenance())
     return d
+
+
+class BadRequest(ValueError):
+    pass
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -407,7 +478,7 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass
 
-    def _send(self, code, body, ctype="application/json; charset=utf-8"):
+    def _send(self, code, body, ctype="application/json; charset=utf-8", csp=None):
         if not isinstance(body, (bytes, str)):
             body = json.dumps(_finite(body), default=_jsonable, allow_nan=False)   # browsers reject Infinity and NaN
         data = body if isinstance(body, bytes) else body.encode("utf-8")
@@ -415,11 +486,27 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
+        self._guard_headers()
+        if csp:
+            self.send_header("Content-Security-Policy", csp)
         self.end_headers()
         self.wfile.write(data)
 
+    def _guard_headers(self):
+        """Other sites may not embed or read the program's responses (review finding 1 and the image oracle)."""
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+        self.send_header("X-Frame-Options", "DENY")
+
+    def _length(self):
+        """The request's Content-Length, refusing a missing sign, text or negative value (review finding 15.7)."""
+        v = (self.headers.get("Content-Length") or "0").strip()
+        if not (v.isascii() and v.isdigit()):
+            raise BadRequest("The request's length is not valid.")
+        return int(v)
+
     def _raw(self):
-        n = int(self.headers.get("Content-Length") or 0)
+        n = self._length()
         return self.rfile.read(n) if n else b""
 
     def _xlsx(self, name, data):
@@ -430,13 +517,196 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers(); self.wfile.write(data)
 
     def _body(self):
-        n = int(self.headers.get("Content-Length") or 0)
-        return json.loads(self.rfile.read(n) or b"{}") if n else {}
+        """The request body as a JSON object; anything else is refused with a message (review finding 10)."""
+        raw = self._raw()
+        if not raw.strip():
+            return {}
+        try:
+            b = json.loads(raw)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            raise BadRequest("The request could not be read (it is not valid JSON).")
+        if not isinstance(b, dict):
+            raise BadRequest("The request could not be read (it is not a JSON object).")
+        return b
+
+    def _file_name(self, default="file"):
+        return LIBM.safe_name(unquote(self.headers.get("X-File-Name") or default)) or default
+
+    def _record_import(self, data, kind, note):
+        """Keep a copy of what was loaded (build plan s 15, F4). Never stops the load itself."""
+        try:
+            with FILE_LOCK:
+                return library().record_import(self._file_name(kind), data, kind=kind, note=note)["path"]
+        except Exception:                                 # noqa: BLE001
+            traceback.print_exc()
+            return None
+
+    # ---- file manager (build plan s 15) -------------------------------------------------------------
+    def _files_get(self, path, q):
+        one = lambda k, d="": (q.get(k) or [d])[0]
+        try:
+            lib = library()
+            if path == "/api/files/list":
+                return self._send(200, lib.listing(one("path")))
+            if path == "/api/files/preview":
+                return self._send(200, lib.preview(one("path")))
+            if path == "/api/files/trash":
+                return self._send(200, {"items": lib.trash_list()})
+            if path == "/api/files/log":
+                return self._send(200, {"items": lib.history(200), "undo": lib.last_undoable()})
+            if path == "/api/files/library":
+                n, size = LIBM.folder_stats(lib.root)
+                try:
+                    free = LIBM.shutil.disk_usage(lib.root).free
+                except OSError:
+                    free = None
+                return self._send(200, {"root": str(lib.root), "default": default_library(), "is_default": str(lib.root) == str(LIBM.Path(default_library()).resolve()),
+                                        "files": n, "bytes": size, "free_bytes": free, "busy": tasks_running(),
+                                        "synced": any(x in str(lib.root).lower() for x in LIBM.SYNCED), "undo": lib.last_undoable(),
+                                        "warning": _LIB_WARNING, "chosen": load_settings().get("library") or default_library()})
+            if path == "/api/files/raw":
+                p = lib.resolve(one("path"))
+                if not p.is_file():
+                    return self._send(404, {"error": "Not a file."})
+                data = p.read_bytes()
+                types = {".png": "image/png", ".svg": "image/svg+xml", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
+                         ".csv": "text/csv; charset=utf-8", ".json": "application/json", ".md": "text/markdown; charset=utf-8",
+                         ".txt": "text/plain; charset=utf-8", ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
+                ctype = types.get(p.suffix.lower(), "application/octet-stream")
+                inline = one("inline") == "1" and p.suffix.lower() in (".png", ".jpg", ".jpeg", ".gif")
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Cache-Control", "no-store")
+                self._guard_headers()
+                self.send_header("Content-Disposition", ("inline" if inline else "attachment") + f"; filename*=UTF-8''{quote(p.name)}")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers(); self.wfile.write(data)
+                return
+        except LIBM.LibraryError as exc:
+            return self._send(400, {"error": str(exc)})
+        except FileNotFoundError:
+            return self._send(404, {"error": "Not found. It may have been moved; refresh the list."})
+        return self._send(404, {"error": "Not found"})
+
+    def _files_post(self, path, q):
+        try:
+            if path == "/api/files/import":
+                data = self._raw()
+                name = self._file_name("file")
+                apply = (q.get("apply") or ["0"])[0] == "1"
+                is_pkg = LIBM.Library.is_package(data, name)
+                with FILE_LOCK:
+                    if is_pkg:
+                        return self._send(200, dict(kind="package", **library().import_package(data, name, apply=apply)))
+                    if not apply:
+                        return self._send(200, {"kind": "file", "name": name, "bytes": len(data), "applied": False})
+                    res = library().record_import(name, data, kind="file", note="imported by the user")
+                    return self._send(200, dict(kind="file", applied=True, **res))
+            b = self._body()
+            if path == "/api/files/op":
+                return self._files_op(b)
+            if path == "/api/files/library":
+                return self._library_op(b)
+        except LIBM.LibraryError as exc:
+            return self._send(400, {"error": str(exc)})
+        except OSError as exc:
+            return self._send(500, {"error": f"The operation could not be completed: {exc}"})
+        return self._send(404, {"error": "Not found"})
+
+    def _files_op(self, b):
+        op = b.get("op")
+        paths = [str(x) for x in (b.get("paths") or [])]
+        apply = bool(b.get("apply"))
+        changing = op in ("make_folder", "rename", "move", "copy", "trash", "restore", "empty_trash", "undo", "package", "unpack")
+        if changing and tasks_running() and (apply or op in ("make_folder", "rename", "restore", "undo", "package")):
+            return self._send(409, {"error": "A task is running. Wait for it to finish before changing files."})
+        with FILE_LOCK:
+            lib = library()                               # taken inside the lock: a library move may just have finished
+            if op == "unpack":
+                return self._send(200, dict(kind="package", **lib.unpack(b.get("path", ""), apply=apply)))
+            if op == "make_folder":
+                return self._send(200, lib.make_folder(b.get("parent", ""), b.get("name") or "New folder"))
+            if op == "rename":
+                return self._send(200, lib.rename(b.get("path", ""), b.get("name") or ""))
+            if op in ("move", "copy"):
+                return self._send(200, lib.transfer(paths, b.get("dest", ""), copy=(op == "copy"), apply=apply))
+            if op == "trash":
+                return self._send(200, lib.trash(paths, apply=apply))
+            if op == "restore":
+                return self._send(200, lib.restore(paths))
+            if op == "empty_trash":
+                return self._send(200, lib.empty_trash(apply=apply))
+            if op == "undo":
+                return self._send(200, lib.undo())
+            if op == "verify":
+                return self._send(200, lib.verify(b.get("path", "")))
+            if op == "package":
+                return self._send(200, lib.make_package(paths, b.get("name") or ""))
+            if op == "reveal":
+                return self._send(200, reveal(lib.resolve(b.get("path", ""))))
+        return self._send(400, {"error": "Unknown operation."})
+
+    def _library_op(self, b):
+        global _LIB
+        action = b.get("action"); lib = library()
+        if action == "adopt_plan":
+            return self._send(200, dict(LIBM.plan_adopt(str(b.get("target") or "")), applied=False))
+        if action == "plan":
+            return self._send(200, LIBM.plan_move_library(lib.root, str(b.get("target") or "")))
+        if action in ("move", "adopt", "reset") and tasks_running():
+            return self._send(409, {"error": "A task is running. Wait for it to finish before moving the library."})
+        with FILE_LOCK:
+            if action == "move":
+                res = LIBM.move_library(lib.root, str(b.get("target") or ""), apply=True)
+                if res.get("applied"):
+                    st = load_settings(); st["library"] = res["target"]; save_settings(st); _LIB = None
+                return self._send(200, res)
+            if action == "adopt_plan":                    # check only; nothing is switched (review finding 1)
+                return self._send(200, dict(LIBM.plan_adopt(str(b.get("target") or "")), applied=False))
+            if action == "adopt":
+                if b.get("confirm") is not True:
+                    return self._send(400, {"error": "Check the folder first, then confirm."})
+                res = LIBM.adopt_library(str(b.get("target") or ""))
+                st = load_settings(); st["library"] = res["folder"]; save_settings(st); _LIB = None
+                return self._send(200, dict(res, applied=True))
+            if action == "reset":
+                st = load_settings(); st.pop("library", None); save_settings(st); _LIB = None
+                return self._send(200, {"applied": True, "root": str(library().root)})
+        return self._send(400, {"error": "Unknown action."})
+
+    # ---- request guard (build plan s 15.3, issue 1) ----------------------------------------------
+    def _host_ok(self):
+        port = self.server.server_address[1]
+        return (self.headers.get("Host") or "").strip().lower() in (f"127.0.0.1:{port}", f"localhost:{port}")
+
+    def _refuse(self, code, msg):
+        self.close_connection = True
+        return self._send(code, {"error": msg})
 
     def do_GET(self):
+        if not self._host_ok():
+            return self._refuse(403, "Requests are accepted only at this computer's own address.")
+        try:
+            return self._get()
+        except Exception as exc:                          # noqa: BLE001
+            traceback.print_exc()
+            try:
+                return self._refuse(500, f"Something went wrong ({type(exc).__name__}).")
+            except OSError:
+                return None
+
+    def _get(self):
+        u = urlsplit(self.path)
+        if u.path.startswith("/api/files/"):
+            return self._files_get(u.path, parse_qs(u.query))
         if self.path in ("/", "/index.html"):
             with open(resource("ui.html"), "rb") as fh:
-                return self._send(200, fh.read(), "text/html; charset=utf-8")
+                html = fh.read()
+            nonce = base64.b64encode(os.urandom(18)).decode("ascii")
+            html = html.replace(b"<script>", f'<script nonce="{nonce}">'.encode("ascii"), 1)
+            csp = (f"default-src 'none'; script-src 'nonce-{nonce}'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
+                   "connect-src 'self'; font-src 'self' data:; form-action 'none'; frame-ancestors 'none'; base-uri 'none'")
+            return self._send(200, html, "text/html; charset=utf-8", csp=csp)
         if self.path == "/api/state":
             return self._send(200, JOB.state())
         if self.path == "/api/result":
@@ -473,6 +743,31 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(404, {"error": "Not found"})
 
     def do_POST(self):
+        if not self._host_ok():
+            return self._refuse(403, "Requests are accepted only at this computer's own address.")
+        if self.headers.get("X-JAF") != "1":
+            return self._refuse(403, "Changes are accepted only from the program's own interface.")
+        try:
+            n = self._length()
+        except BadRequest as exc:
+            return self._refuse(400, str(exc))
+        if n > MAX_UPLOAD:
+            return self._refuse(413, "The file is larger than 512 MB. Move larger collections with 'Move the library', or copy the package file directly.")
+        try:
+            return self._post()
+        except BadRequest as exc:
+            return self._refuse(400, str(exc))
+        except Exception as exc:                          # noqa: BLE001  every request gets an answer (finding 10)
+            traceback.print_exc()
+            try:
+                return self._refuse(500, f"Something went wrong ({type(exc).__name__}). Nothing further was changed.")
+            except OSError:
+                return None
+
+    def _post(self):
+        u = urlsplit(self.path)
+        if u.path.startswith("/api/files/"):
+            return self._files_post(u.path, parse_qs(u.query))
         if self.path == "/api/run":
             b = self._body()
             sweep = max(0, min(200, int(b.get("sweep", 12))))
@@ -482,10 +777,13 @@ class Handler(BaseHTTPRequestHandler):
             self._raw()
             return self._send(409, {"error": "A task is running. Wait for it to finish, or cancel it, before loading another world."})
         if self.path == "/api/world/load":
-            world, design, issues = read_workbook(self._raw())
+            data = self._raw()
+            world, design, issues = read_workbook(data)
+            rec = None
             if world is not None:
                 WJOB.set_world(world, issues, design)
-            return self._send(200, {"ok": world is not None, "issues": issues, "design": design is not None})
+                rec = self._record_import(data, "coded workbook", "loaded on the Real-world sample tab")
+            return self._send(200, {"ok": world is not None, "issues": issues, "design": design is not None, "recorded": rec})
         if self.path == "/api/world/illustrative":
             from jaf.examples import illustrative_design
             w = illustrative_world()
@@ -534,11 +832,13 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 return self._send(400, {"error": "This is not a JAF Rule Bench pre-registration file (.json)."})
             EJOB.record = rec; EJOB._persist()
-            return self._send(200, {"fingerprint": rec.get("fingerprint")})
+            kept = self._record_import(raw.encode("utf-8"), "pre-registration record", "loaded on the Test against data tab")
+            return self._send(200, {"fingerprint": rec.get("fingerprint"), "recorded": kept})
         if self.path == "/api/est/save":
             if not EJOB.results:
                 return self._send(400, {"error": "There are no estimation results to save yet."})
-            return self._send(200, {"folder": save_est_bundle()})
+            with FILE_LOCK:
+                return self._send(200, {"folder": _save(save_est_bundle)})
         if self.path == "/api/world/run":
             b = self._body()
             ok = WJOB.start("run", b.get("params", {}))
@@ -556,19 +856,39 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/world/save":
             if not WJOB.result:
                 return self._send(400, {"error": "There are no coded-world results to save yet."})
-            return self._send(200, {"folder": save_world_bundle(WJOB)})
+            with FILE_LOCK:
+                return self._send(200, {"folder": _save(save_world_bundle, WJOB)})
         if self.path == "/api/cancel":
             JOB.cancel_flag = True
             return self._send(200, {"cancelling": True})
         if self.path == "/api/save":
             if not JOB.result:
                 return self._send(400, {"error": "There are no results to save yet. Run the model first."})
-            return self._send(200, {"folder": save_bundle(JOB.result)})
+            with FILE_LOCK:
+                return self._send(200, {"folder": _save(save_bundle, JOB.result)})
         if self.path == "/api/quit":
+            got = FILE_LOCK.acquire(timeout=600)          # let a move, package or save in progress finish first
             self._send(200, {"bye": True})
             threading.Thread(target=self.server.shutdown, daemon=True).start()
             return
         return self._send(404, {"error": "Not found"})
+
+
+def reveal(p):
+    """Show a file or folder in the computer's file browser (Explorer on Windows)."""
+    try:
+        if platform.system() == "Windows":
+            if p.is_file():
+                subprocess.Popen(["explorer", "/select,", str(p)])
+            else:
+                os.startfile(str(p))                     # noqa: S606 (a path inside the library)
+        elif platform.system() == "Darwin":
+            subprocess.Popen(["open", "-R", str(p)] if p.is_file() else ["open", str(p)])
+        else:
+            subprocess.Popen(["xdg-open", str(p if p.is_dir() else p.parent)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return {"opened": True}
+    except Exception as exc:                              # noqa: BLE001
+        return {"opened": False, "error": f"The file browser could not be opened: {exc}"}
 
 
 def free_port(start=8765):
